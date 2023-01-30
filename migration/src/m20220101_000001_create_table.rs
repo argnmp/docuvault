@@ -19,8 +19,7 @@ impl MigrationTrait for Migration {
                             .primary_key(),
                     )
                     .col(ColumnDef::new(Docuser::Email).string().not_null())
-                    .col(ColumnDef::new(Docuser::Password).string().not_null())
-                    .col(ColumnDef::new(Docuser::Salt).string().not_null())
+                    .col(ColumnDef::new(Docuser::Hash).string().not_null())
                     .col(ColumnDef::new(Docuser::Nickname).string().not_null())
                     .col(ColumnDef::new(Docuser::CreatedAt).date_time().not_null().extra("DEFAULT CURRENT_TIMESTAMP".to_string()))
                     .col(ColumnDef::new(Docuser::UpdatedAt).date_time().not_null().extra("DEFAULT CURRENT_TIMESTAMP".to_string()))
@@ -29,8 +28,8 @@ impl MigrationTrait for Migration {
             .await?;
         let insert = Query::insert()
             .into_table(Docuser::Table)
-            .columns([Docuser::Email, Docuser::Password, Docuser::Salt, Docuser::Nickname])
-            .values_panic(["kim@naver.com".into(),"a".into(),"a".into(),"kim".into()])
+            .columns([Docuser::Email, Docuser::Hash, Docuser::Nickname])
+            .values_panic(["kim@naver.com".into(),"a".into(),"kim".into()])
             .or_default_values()
             .to_owned();
         manager.exec_stmt(insert).await?;
@@ -216,8 +215,7 @@ enum Docuser {
     Table,
     Id,
     Email,
-    Password,
-    Salt,
+    Hash,
     Nickname,
     CreatedAt,
     UpdatedAt,

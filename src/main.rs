@@ -1,8 +1,5 @@
-use std::{env, time::Duration, net::SocketAddr};
-use axum::Router;
-use dotenvy::dotenv;
-use sea_orm::{DatabaseConnection, EntityTrait};
-use tower_http::{trace::TraceLayer};
+use std::net::SocketAddr;
+use sea_orm::DatabaseConnection;
 use tracing;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
@@ -16,8 +13,10 @@ pub struct AppState {
     db_conn: DatabaseConnection
 }
 
+
 #[tokio::main]
 async fn main() {
+    dotenvy::dotenv().ok();
     tracing_subscriber::registry()
         .with(
             tracing_subscriber::EnvFilter::try_from_default_env()

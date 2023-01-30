@@ -3,6 +3,7 @@ use tower_http::trace::TraceLayer;
 
 use crate::AppState;
 
+mod error;
 mod auth;
 
 pub fn create_router(shared_state: AppState) -> Router {

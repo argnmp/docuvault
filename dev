@@ -1,0 +1,1 @@
+nodemon --watch src -e rs --exec cargo run
