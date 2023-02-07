@@ -1,3 +1,6 @@
+use std::error::Error;
+use std::fmt::Display;
+
 use axum::{
     response::IntoResponse,
     http::StatusCode,
@@ -12,17 +15,25 @@ pub enum GlobalError {
     InternalServerError,
     NoPermission,
     DbError,
+    DbTrxError,
     RedisError,
     RedisConnectionPoolError,
     Auth(AuthError),
     Document(DocumentError),
 }
+impl Display for GlobalError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{:?}", self)
+    }
+}
+impl Error for GlobalError {}
 impl IntoResponse for GlobalError {
     fn into_response(self) -> axum::response::Response {
         match self {
             Self::InternalServerError => (StatusCode::INTERNAL_SERVER_ERROR, "internal server error").into_response(),
             Self::NoPermission => (StatusCode::FORBIDDEN, "no permission").into_response(),
             Self::DbError => (StatusCode::INTERNAL_SERVER_ERROR, "Db error").into_response(),
+            Self::DbTrxError => (StatusCode::INTERNAL_SERVER_ERROR, "Db transaction error").into_response(),
             Self::RedisError => (StatusCode::INTERNAL_SERVER_ERROR, "Redis error").into_response(),
             Self::RedisConnectionPoolError => (StatusCode::INTERNAL_SERVER_ERROR, "Redis bb8 connection pool error").into_response(),
             Self::Auth(error) => error.into_response(),
@@ -30,9 +41,15 @@ impl IntoResponse for GlobalError {
         }
     }
 }
+
 impl From<sea_orm::error::DbErr> for GlobalError {
     fn from(value: sea_orm::error::DbErr) -> Self {
         GlobalError::DbError
+    }
+}
+impl<E> From<sea_orm::TransactionError<E>> for GlobalError where E: Error{
+    fn from(value: sea_orm::TransactionError<E>) -> Self {
+        GlobalError::DbTrxError
     }
 }
 impl From<RedisError> for GlobalError {

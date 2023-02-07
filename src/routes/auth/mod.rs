@@ -38,11 +38,6 @@ pub fn create_router(shared_state: AppState) -> Router {
         .with_state(shared_state)
 }
 async fn test(State(state): State<AppState>) -> impl IntoResponse {
-    // let mut a = redis_schema!("refresh".to_owned(), "kimtahen".to_string(), {id: String, count: usize});
-    // a.get_count(state.redis_conn.clone()).await;
-    // let prev_count = a.count.unwrap();
-    // a.set_id("1234".to_string()).set_count(prev_count+1).flush(state.redis_conn.clone()).await;
-    // Json(json!({"msg": "you've got access"}))
 }
 
 async fn protected() -> impl IntoResponse {

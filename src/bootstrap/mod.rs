@@ -14,5 +14,5 @@ pub async fn bootstrap(state: AppState) {
 
     let mut con = state.redis_conn.get().await.unwrap();
     let res:() = con.zadd_multiple("tags", &sorted_tags[..]).await.expect("setting tags failed");
-     
+
 }
