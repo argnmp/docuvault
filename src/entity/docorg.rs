@@ -19,12 +19,14 @@ pub struct Model {
 pub enum Relation {
     #[sea_orm(has_many = "super::docorg_scope::Entity")]
     DocorgScope,
+    #[sea_orm(has_many = "super::docorg_tag::Entity")]
+    DocorgTag,
     #[sea_orm(
         belongs_to = "super::docuser::Entity",
         from = "Column::DocuserId",
         to = "super::docuser::Column::Id",
-        on_update = "NoAction",
-        on_delete = "NoAction"
+        on_update = "Cascade",
+        on_delete = "Cascade"
     )]
     Docuser,
 }
@@ -32,6 +34,12 @@ pub enum Relation {
 impl Related<super::docorg_scope::Entity> for Entity {
     fn to() -> RelationDef {
         Relation::DocorgScope.def()
+    }
+}
+
+impl Related<super::docorg_tag::Entity> for Entity {
+    fn to() -> RelationDef {
+        Relation::DocorgTag.def()
     }
 }
 

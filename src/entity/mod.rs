@@ -4,6 +4,8 @@ pub mod prelude;
 
 pub mod docorg;
 pub mod docorg_scope;
+pub mod docorg_tag;
 pub mod docuser;
 pub mod image;
 pub mod scope;
+pub mod tag;

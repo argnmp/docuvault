@@ -1,4 +1,7 @@
 use std::net::SocketAddr;
+use axum::extract::FromRef;
+use bb8::Pool;
+use bb8_redis::RedisConnectionManager;
 use sea_orm::DatabaseConnection;
 use tracing;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
@@ -7,10 +10,24 @@ use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 mod entity;
 mod db;
 mod routes;
+mod middleware;
+mod bootstrap;
 
-#[derive(Clone)]
+// database connection pool implements clone by internally using Arc
+#[derive(Clone, Debug)]
 pub struct AppState {
-    db_conn: DatabaseConnection
+    db_conn: DatabaseConnection,
+    redis_conn: Pool<RedisConnectionManager>
+}
+impl FromRef<AppState> for DatabaseConnection {
+    fn from_ref(input: &AppState) -> Self {
+        input.db_conn.clone()
+    } 
+}
+impl FromRef<AppState> for Pool<RedisConnectionManager> {
+    fn from_ref(input: &AppState) -> Self {
+        input.redis_conn.clone()
+    }
 }
 
 
@@ -25,16 +42,21 @@ async fn main() {
         .with(tracing_subscriber::fmt::layer())
         .init();
 
-    let db_conn = db::connect().await;
+    let db_conn    = db::postgres_connect().await;
+    let redis_conn = db::redis_connect().await;
     let state = AppState{
         db_conn,
+        redis_conn 
     };
     
     let addr = SocketAddr::from(([127, 0, 0, 1], 8000));
+    
+    bootstrap::bootstrap(state.clone()).await;
+    
 
     tracing::debug!("listening on {}", addr);
     axum::Server::bind(&addr)
-        .serve(routes::create_router(state).into_make_service())
+        .serve(routes::create_router(state).into_make_service_with_connect_info::<SocketAddr>())
         .await
         .unwrap();
 }

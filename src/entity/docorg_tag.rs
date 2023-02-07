@@ -3,12 +3,12 @@
 use sea_orm::entity::prelude::*;
 
 #[derive(Clone, Debug, PartialEq, DeriveEntityModel, Eq)]
-#[sea_orm(table_name = "docorg_scope")]
+#[sea_orm(table_name = "docorg_tag")]
 pub struct Model {
     #[sea_orm(primary_key)]
     pub id: i32,
     pub docorg_id: i32,
-    pub scope_id: i32,
+    pub tag_id: i32,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
@@ -22,13 +22,13 @@ pub enum Relation {
     )]
     Docorg,
     #[sea_orm(
-        belongs_to = "super::scope::Entity",
-        from = "Column::ScopeId",
-        to = "super::scope::Column::Id",
+        belongs_to = "super::tag::Entity",
+        from = "Column::TagId",
+        to = "super::tag::Column::Id",
         on_update = "Cascade",
         on_delete = "Cascade"
     )]
-    Scope,
+    Tag,
 }
 
 impl Related<super::docorg::Entity> for Entity {
@@ -37,9 +37,9 @@ impl Related<super::docorg::Entity> for Entity {
     }
 }
 
-impl Related<super::scope::Entity> for Entity {
+impl Related<super::tag::Entity> for Entity {
     fn to() -> RelationDef {
-        Relation::Scope.def()
+        Relation::Tag.def()
     }
 }
 

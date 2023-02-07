@@ -2,6 +2,8 @@
 
 pub use super::docorg::Entity as Docorg;
 pub use super::docorg_scope::Entity as DocorgScope;
+pub use super::docorg_tag::Entity as DocorgTag;
 pub use super::docuser::Entity as Docuser;
 pub use super::image::Entity as Image;
 pub use super::scope::Entity as Scope;
+pub use super::tag::Entity as Tag;

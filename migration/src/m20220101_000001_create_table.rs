@@ -29,7 +29,7 @@ impl MigrationTrait for Migration {
         let insert = Query::insert()
             .into_table(Docuser::Table)
             .columns([Docuser::Email, Docuser::Hash, Docuser::Nickname])
-            .values_panic(["kim@naver.com".into(),"a".into(),"kim".into()])
+            .values_panic(["abc@abc.com".into(),"$argon2id$v=19$m=4096,t=3,p=1$04bZG/BgZ88j2z6hwm+KPw$F+jgyuh+RxFgpZfAA+heTAdsCyDjU67rOFODgRNxgMo".into(),"abc".into()])
             .or_default_values()
             .to_owned();
         manager.exec_stmt(insert).await?;
@@ -56,7 +56,10 @@ impl MigrationTrait for Migration {
                     .foreign_key(
                         ForeignKey::create()
                         .from(Docorg::Table, Docorg::DocuserId)
-                        .to(Docuser::Table, Docuser::Id))
+                        .to(Docuser::Table, Docuser::Id)
+                        .on_delete(ForeignKeyAction::Cascade)
+                        .on_update(ForeignKeyAction::Cascade)
+                        )
                     .to_owned(),
             )
             .await?;
@@ -65,6 +68,8 @@ impl MigrationTrait for Migration {
             .into_table(Docorg::Table)
             .columns([Docorg::DocuserId, Docorg::Raw, Docorg::Status])
             .values_panic([1.into(), "hello world. this is new document".into(), 1.into()])
+            .values_panic([1.into(), "You must have chaos within you to give birth to a dancing star.".into(), 1.into()])
+            .values_panic([1.into(), "That which does not kill us makes us stronger.".into(), 1.into()])
             .or_default_values()
             .to_owned();
         manager.exec_stmt(insert).await?;
@@ -86,7 +91,10 @@ impl MigrationTrait for Migration {
                     .foreign_key(
                         ForeignKey::create()
                         .from(Scope::Table, Scope::DocuserId)
-                        .to(Docuser::Table, Docuser::Id))
+                        .to(Docuser::Table, Docuser::Id)
+                        .on_delete(ForeignKeyAction::Cascade)
+                        .on_update(ForeignKeyAction::Cascade)
+                        )
                     .to_owned(),
             )
             .await?;
@@ -95,9 +103,11 @@ impl MigrationTrait for Migration {
             .into_table(Scope::Table)
             .columns([Scope::DocuserId, Scope::Name])
             .values_panic([1.into(), "navydocuments".into()])
+            .values_panic([1.into(), "kimtahencom".into()])
             .or_default_values()
             .to_owned();
         manager.exec_stmt(insert).await?;
+
 
         manager
             .create_table(
@@ -116,11 +126,17 @@ impl MigrationTrait for Migration {
                     .foreign_key(
                         ForeignKey::create()
                         .from(DocorgScope::Table, DocorgScope::DocorgId)
-                        .to(Docorg::Table, Docorg::Id))
+                        .to(Docorg::Table, Docorg::Id)
+                        .on_delete(ForeignKeyAction::Cascade)
+                        .on_update(ForeignKeyAction::Cascade)
+                        )
                     .foreign_key(
                         ForeignKey::create()
                         .from(DocorgScope::Table, DocorgScope::ScopeId)
-                        .to(Scope::Table, Scope::Id))
+                        .to(Scope::Table, Scope::Id)
+                        .on_delete(ForeignKeyAction::Cascade)
+                        .on_update(ForeignKeyAction::Cascade)
+                        )
                     .to_owned(),
             )
             .await?;
@@ -129,6 +145,9 @@ impl MigrationTrait for Migration {
             .into_table(DocorgScope::Table)
             .columns([DocorgScope::DocorgId, DocorgScope::ScopeId])
             .values_panic([1.into(), 1.into()])
+            .values_panic([1.into(), 2.into()])
+            .values_panic([2.into(), 1.into()])
+            .values_panic([3.into(), 2.into()])
             .or_default_values()
             .to_owned();
         manager.exec_stmt(insert).await?;
@@ -136,24 +155,77 @@ impl MigrationTrait for Migration {
         manager
             .create_table(
                 Table::create()
-                    .table(Scope::Table)
+                    .table(Tag::Table)
                     .if_not_exists()
                     .col(
-                        ColumnDef::new(Scope::Id)
+                        ColumnDef::new(Tag::Id)
                             .integer()
                             .not_null()
                             .auto_increment()
                             .primary_key(),
                     )
-                    .col(ColumnDef::new(Scope::DocuserId).integer().not_null())
-                    .col(ColumnDef::new(Scope::Name).string().not_null())
-                    .foreign_key(
-                        ForeignKey::create()
-                        .from(Scope::Table, Scope::DocuserId)
-                        .to(Docuser::Table, Docuser::Id))
+                    .col(ColumnDef::new(Tag::Value).string().not_null())
                     .to_owned(),
             )
             .await?;
+
+        let insert = Query::insert()
+            .into_table(Tag::Table)
+            .columns([Tag::Value])
+            .values_panic(["cpp".into()])
+            .values_panic(["rust".into()])
+            .values_panic(["javascript".into()])
+            .values_panic(["algorithm".into()])
+            .or_default_values()
+            .to_owned();
+        manager.exec_stmt(insert).await?;
+
+        manager
+            .create_table(
+                Table::create()
+                    .table(DocorgTag::Table)
+                    .if_not_exists()
+                    .col(
+                        ColumnDef::new(DocorgTag::Id)
+                            .integer()
+                            .not_null()
+                            .auto_increment()
+                            .primary_key(),
+                    )
+                    .col(ColumnDef::new(DocorgTag::DocorgId).integer().not_null())
+                    .col(ColumnDef::new(DocorgTag::TagId).integer().not_null())
+                    .foreign_key(
+                        ForeignKey::create()
+                        .from(DocorgTag::Table, DocorgTag::DocorgId)
+                        .to(Docorg::Table, Docorg::Id)
+                        .on_delete(ForeignKeyAction::Cascade)
+                        .on_update(ForeignKeyAction::Cascade)
+                        )
+                    .foreign_key(
+                        ForeignKey::create()
+                        .from(DocorgTag::Table, DocorgTag::TagId)
+                        .to(Tag::Table, Tag::Id)
+                        .on_delete(ForeignKeyAction::Cascade)
+                        .on_update(ForeignKeyAction::Cascade)
+                        )
+                    .to_owned(),
+            )
+            .await?;
+
+        let insert = Query::insert()
+            .into_table(DocorgTag::Table)
+            .columns([DocorgTag::DocorgId, DocorgTag::TagId])
+            .values_panic([1.into(), 1.into()])
+            .values_panic([1.into(), 2.into()])
+            .values_panic([1.into(), 3.into()])
+            .values_panic([1.into(), 4.into()])
+            .values_panic([2.into(), 2.into()])
+            .values_panic([2.into(), 4.into()])
+            .values_panic([3.into(), 1.into()])
+            .values_panic([3.into(), 3.into()])
+            .or_default_values()
+            .to_owned();
+        manager.exec_stmt(insert).await?;
 
         manager
             .create_table(
@@ -179,6 +251,9 @@ impl MigrationTrait for Migration {
 
     async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
         manager
+            .drop_table(Table::drop().table(DocorgTag::Table).to_owned())
+            .await?;
+        manager
             .drop_table(Table::drop().table(DocorgScope::Table).to_owned())
             .await?;
         manager
@@ -186,6 +261,9 @@ impl MigrationTrait for Migration {
             .await?;
         manager
             .drop_table(Table::drop().table(Scope::Table).to_owned())
+            .await?;
+        manager
+            .drop_table(Table::drop().table(Tag::Table).to_owned())
             .await?;
         manager
             .drop_table(Table::drop().table(Image::Table).to_owned())
@@ -236,6 +314,19 @@ enum DocorgScope {
     ScopeId, 
 }
 
+#[derive(Iden)]
+enum Tag {
+    Table,
+    Id,
+    Value,
+}
+#[derive(Iden)]
+enum DocorgTag {
+    Table,
+    Id,
+    DocorgId,
+    TagId,
+}
 #[derive(Iden)]
 enum Image {
     Table,

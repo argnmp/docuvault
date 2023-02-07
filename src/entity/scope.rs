@@ -19,8 +19,8 @@ pub enum Relation {
         belongs_to = "super::docuser::Entity",
         from = "Column::DocuserId",
         to = "super::docuser::Column::Id",
-        on_update = "NoAction",
-        on_delete = "NoAction"
+        on_update = "Cascade",
+        on_delete = "Cascade"
     )]
     Docuser,
 }
