@@ -1,3 +1,5 @@
+use std::rc::Rc;
+use std::sync::Arc;
 use std::time::Duration;
 
 use axum::{Router, extract::State, Json, response::IntoResponse, routing::post, middleware::from_extractor_with_state};
@@ -44,43 +46,64 @@ async fn create_document(State(state): State<AppState>, claims: Claims, Json(pay
                 status: Set(1),
                 ..Default::default()
             };
-            let res = entity::docorg::Entity::insert(new_doc).exec(txn).await?;
+            let docres = entity::docorg::Entity::insert(new_doc).exec(txn).await?;
             let new_docorg_scope = entity::docorg_scope::ActiveModel {
-                docorg_id: Set(res.last_insert_id),
+                docorg_id: Set(docres.last_insert_id),
                 scope_id: Set(payload.scope_id),
                 ..Default::default()
             };
             let _ = entity::docorg_scope::Entity::insert(new_docorg_scope).exec(txn).await?;
+
+
+            let mut con = state.redis_conn.get().await?;
+            let tags: std::collections::BTreeSet<String> = con.zrange("tags", 0, -1).await?;
+            let document_tags = payload.tags.into_iter().collect::<std::collections::BTreeSet<_>>();
+            
+            let new_tags = document_tags.iter().filter(|tag| !tags.contains(&tag[..])).map(|tag| (0, tag.clone())).collect::<Vec<_>>();
+
+
+            if new_tags.len() > 0{
+
+                // txn.transaction_with_config::<_, (), GlobalError>(|txn|{
+                    // Box::pin(async move {
+                        // Ok(())
+                    // })
+//
+                // }, Some(sea_orm::IsolationLevel::Serializable), None).await?;
+
+                let models = new_tags.iter().map(|(_, tag)| entity::tag::ActiveModel {
+                    value: Set(tag.clone()),
+                    ..Default::default()
+                }).collect::<Vec<_>>();
+
+                let res = entity::tag::Entity::insert_many(models).exec(txn).await?;
+
+            }
+
+
+            let mut cond = Condition::any();
+            for tag in &document_tags {
+                cond = cond.add(entity::tag::Column::Value.eq(tag.clone()));
+
+            }
+            let res = entity::tag::Entity::find().filter(cond).all(txn).await?;
+            dbg!(&res);
+
+            let models = res.iter().map(|m|{
+                entity::docorg_tag::ActiveModel {
+                    docorg_id: Set(docres.last_insert_id),
+                    tag_id: Set(m.id),
+                    ..Default::default()
+                }
+            }).collect::<Vec<_>>();
+            let res = entity::docorg_tag::Entity::insert_many(models).exec(txn).await?;
+
+            let _:() = con.zadd_multiple("tags", &new_tags[..]).await?;
             Ok(())
         })
     }).await?; 
-
-    // let _ = entity::docorg::Entity::insert(new_document).exec(&state.db_conn).await?;
     
 
-    let mut con = state.redis_conn.get().await?;
-    let tags: std::collections::BTreeSet<String> = con.zrange("tags", 0, -1).await?;
-
-    let new_tags = payload.tags.into_iter().filter(|tag| !tags.contains(&tag[..])).map(|tag| (0, tag)).collect::<Vec<_>>();
-
-    if new_tags.len() > 0{
-        let _:() = con.zadd_multiple("tags", &new_tags[..]).await?;
-
-        // background db update
-        // can add function that the last background db work is successful or not
-        let db_conn = state.db_conn.clone();
-        tokio::spawn(async move {
-
-            let models = new_tags.into_iter().map(|(_, tag)| entity::tag::ActiveModel {
-                value: Set(tag),
-                ..Default::default()
-            });
-            entity::tag::Entity::insert_many(models).exec(&db_conn).await?;
-
-            //????????
-            Ok::<(), GlobalError>(())
-        });
-    }
 
     Ok(())
 }

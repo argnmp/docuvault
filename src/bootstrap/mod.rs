@@ -9,10 +9,13 @@ pub async fn bootstrap(state: AppState) {
         .all(&state.db_conn)
         .await
         .expect("tag loading failes");
+
+    dbg!(&tags);
     
-    let sorted_tags = tags.into_iter().map(|m|(0, m.value)).collect::<Vec<_>>();
+    let tags = tags.into_iter().map(|m|(m.id, m.value)).collect::<Vec<_>>();
 
     let mut con = state.redis_conn.get().await.unwrap();
-    let res:() = con.zadd_multiple("tags", &sorted_tags[..]).await.expect("setting tags failed");
+    let res:() = con.del("tags").await.expect("deleting existing tags failed");
+    let res:() = con.zadd_multiple("tags", &tags[..]).await.expect("setting tags failed");
 
 }

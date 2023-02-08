@@ -84,7 +84,7 @@ impl MigrationTrait for Migration {
                             .integer()
                             .not_null()
                             .auto_increment()
-                            .primary_key(),
+                            .primary_key()
                     )
                     .col(ColumnDef::new(Scope::DocuserId).integer().not_null())
                     .col(ColumnDef::new(Scope::Name).string().not_null())
@@ -119,10 +119,10 @@ impl MigrationTrait for Migration {
                             .integer()
                             .not_null()
                             .auto_increment()
-                            .primary_key(),
                     )
                     .col(ColumnDef::new(DocorgScope::DocorgId).integer().not_null())
                     .col(ColumnDef::new(DocorgScope::ScopeId).integer().not_null())
+                    .primary_key(Index::create().col(DocorgScope::DocorgId).col(DocorgScope::ScopeId))
                     .foreign_key(
                         ForeignKey::create()
                         .from(DocorgScope::Table, DocorgScope::DocorgId)
@@ -190,10 +190,10 @@ impl MigrationTrait for Migration {
                             .integer()
                             .not_null()
                             .auto_increment()
-                            .primary_key(),
                     )
                     .col(ColumnDef::new(DocorgTag::DocorgId).integer().not_null())
                     .col(ColumnDef::new(DocorgTag::TagId).integer().not_null())
+                    .primary_key(Index::create().col(DocorgTag::DocorgId).col(DocorgTag::TagId))
                     .foreign_key(
                         ForeignKey::create()
                         .from(DocorgTag::Table, DocorgTag::DocorgId)

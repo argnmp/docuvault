@@ -44,11 +44,13 @@ impl IntoResponse for GlobalError {
 
 impl From<sea_orm::error::DbErr> for GlobalError {
     fn from(value: sea_orm::error::DbErr) -> Self {
+        dbg!(value);
         GlobalError::DbError
     }
 }
 impl<E> From<sea_orm::TransactionError<E>> for GlobalError where E: Error{
     fn from(value: sea_orm::TransactionError<E>) -> Self {
+        dbg!(value); 
         GlobalError::DbTrxError
     }
 }
