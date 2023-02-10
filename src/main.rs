@@ -1,3 +1,4 @@
+#![allow(unused)]
 use std::net::SocketAddr;
 use axum::extract::FromRef;
 use bb8::Pool;

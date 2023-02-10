@@ -10,7 +10,6 @@ pub async fn bootstrap(state: AppState) {
         .await
         .expect("tag loading failes");
 
-    dbg!(&tags);
     
     let tags = tags.into_iter().map(|m|(m.id, m.value)).collect::<Vec<_>>();
 

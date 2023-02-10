@@ -1,4 +1,19 @@
-use serde::Deserialize;
+use std::env;
+use axum::{
+    async_trait, 
+    extract::{FromRequestParts, TypedHeader, State, FromRef}, 
+    headers::{Authorization, authorization::Bearer}, 
+    http::request::Parts,
+    RequestPartsExt,
+};
+use bb8::Pool;
+use bb8_redis::RedisConnectionManager;
+use jsonwebtoken::{EncodingKey, DecodingKey, decode, Validation, errors::ErrorKind};
+use once_cell::sync::Lazy;
+use serde::{Deserialize, Serialize};
+use sea_orm::{entity::*, query::*, FromQueryResult, DatabaseConnection};
+
+use super::error::DocumentError;
 
 #[derive(Debug, Deserialize)]
 pub struct CreateDocumentPayload {
@@ -6,4 +21,101 @@ pub struct CreateDocumentPayload {
     pub tags: Vec<String>,
     pub scope_id: i32,
     pub prev_document_id: Option<i32>
+}
+
+pub struct Keys {
+    pub encoding : EncodingKey,
+    pub decoding : DecodingKey,
+}
+
+impl Keys {
+    pub fn new(secret: &[u8]) -> Self {
+        Keys {
+            encoding: EncodingKey::from_secret(secret),
+            decoding: DecodingKey::from_secret(secret),
+        }
+    }
+}
+
+pub static PUBLISH_KEYS: Lazy<Keys> = Lazy::new(||{
+    tracing::debug!("initializing publish keys");
+    Keys::new(env::var("PUBLISH_JWT_SECRET").expect("PUBLISH_JWT_SECRET is not set").as_bytes())
+});
+
+#[derive(Debug, Deserialize)]
+pub struct PublishPayload {
+    pub doc_id: i32,
+    pub scope_id: i32,
+}
+#[derive(Debug, Serialize)]
+pub struct PublishResponse {
+    pub publish_token  : String,
+}
+
+#[derive(Debug,FromQueryResult)]
+pub struct DocorgWithScope {
+    pub id: i32,
+    pub raw: String,
+    pub docuser_id: i32,
+    pub status: i32,
+    pub scope_id: i32,
+}
+#[derive(Debug, Deserialize)]
+pub struct GetDocumentPayload{
+    pub publish_token: String,
+}
+
+pub fn get_claims(payload: GetDocumentPayload) -> Result<DocumentClaims, DocumentError>{
+    let token_data = decode::<DocumentClaims>(&payload.publish_token, &PUBLISH_KEYS.decoding, &Validation::default())
+        .map_err(|err| {
+            if err.into_kind() == ErrorKind::ExpiredSignature {
+                DocumentError::PublishTokenExpired
+            }
+            else {
+                DocumentError::InvalidPublishToken
+            }
+        })?;
+
+    Ok(token_data.claims)
+    
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct DocumentClaims {
+    pub iat       : i64,
+    pub exp       : i64,
+    pub iss       : String,
+    pub token_typ : String,
+    pub doc_id: i32,
+    pub scope_id: i32,
+
+}
+#[async_trait]
+impl<S> FromRequestParts<S> for DocumentClaims
+    where 
+    DatabaseConnection: FromRef<S>,
+    Pool<RedisConnectionManager>: FromRef<S>,
+    S: Sync + Send
+{
+    type Rejection = DocumentError;
+
+    async fn from_request_parts(parts: &mut Parts, state: &S) -> Result<Self, Self::Rejection> {
+        dbg!("called claims");
+
+        let TypedHeader(Authorization(bearer)) = parts
+            .extract::<TypedHeader<Authorization<Bearer>>>()
+            .await
+            .map_err(|_| DocumentError::PublishTokenMissing)?;
+
+        let token_data = decode::<DocumentClaims>(bearer.token(), &PUBLISH_KEYS.decoding, &Validation::default())
+            .map_err(|err| {
+                if err.into_kind() == ErrorKind::ExpiredSignature {
+                    DocumentError::PublishTokenExpired
+                }
+                else {
+                    DocumentError::InvalidPublishToken
+                }
+            })?;
+        Ok(token_data.claims)
+    }
 }

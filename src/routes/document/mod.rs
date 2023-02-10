@@ -2,11 +2,17 @@ use std::rc::Rc;
 use std::sync::Arc;
 use std::time::Duration;
 
+use axum::http::{Method, header};
+use axum::response::Html;
+use axum::routing::{get, options};
 use axum::{Router, extract::State, Json, response::IntoResponse, routing::post, middleware::from_extractor_with_state};
+use jsonwebtoken::{encode, Header};
 use redis::AsyncCommands;
-use sea_orm::{entity::*, query::*};
+use sea_orm::{entity::*, query::*, FromQueryResult};
 use tokio::time::sleep;
+use tower_http::cors::{CorsLayer, Any};
 use crate::{AppState, entity};
+
 
 pub mod error;
 use error::*;
@@ -21,9 +27,16 @@ use super::auth::object::Claims as Authenticate;
 pub fn create_router(shared_state: AppState) -> Router {
     Router::new()
         .route("/create", post(create_document))
+        .route("/publish", post(publish))
+        .route("/", post(get_document))
+        .layer(
+            CorsLayer::new()
+                .allow_origin(Any)
+                .allow_methods([Method::POST])
+                .allow_headers([header::CONTENT_TYPE])
+            )
         .with_state(shared_state)
 }
-
 async fn create_document(State(state): State<AppState>, claims: Claims, Json(payload): Json<CreateDocumentPayload>) -> Result<impl IntoResponse, GlobalError>{
     
     let res = entity::scope::Entity::find()
@@ -64,13 +77,6 @@ async fn create_document(State(state): State<AppState>, claims: Claims, Json(pay
 
             if new_tags.len() > 0{
 
-                // txn.transaction_with_config::<_, (), GlobalError>(|txn|{
-                    // Box::pin(async move {
-                        // Ok(())
-                    // })
-//
-                // }, Some(sea_orm::IsolationLevel::Serializable), None).await?;
-
                 let models = new_tags.iter().map(|(_, tag)| entity::tag::ActiveModel {
                     value: Set(tag.clone()),
                     ..Default::default()
@@ -87,7 +93,6 @@ async fn create_document(State(state): State<AppState>, claims: Claims, Json(pay
 
             }
             let res = entity::tag::Entity::find().filter(cond).all(txn).await?;
-            dbg!(&res);
 
             let models = res.iter().map(|m|{
                 entity::docorg_tag::ActiveModel {
@@ -98,7 +103,11 @@ async fn create_document(State(state): State<AppState>, claims: Claims, Json(pay
             }).collect::<Vec<_>>();
             let res = entity::docorg_tag::Entity::insert_many(models).exec(txn).await?;
 
-            let _:() = con.zadd_multiple("tags", &new_tags[..]).await?;
+
+            //update tags last for the db fail case
+            if new_tags.len() > 0{
+                let _:() = con.zadd_multiple("tags", &new_tags[..]).await?;
+            }
             Ok(())
         })
     }).await?; 
@@ -107,3 +116,58 @@ async fn create_document(State(state): State<AppState>, claims: Claims, Json(pay
 
     Ok(())
 }
+
+async fn publish(State(state): State<AppState>, claims: Claims, Json(payload): Json<PublishPayload>) -> Result<impl IntoResponse, GlobalError>{
+
+    let res = entity::docorg_scope::Entity::find()
+        .filter(
+            Condition::all()
+                .add(entity::docorg_scope::Column::DocorgId.eq(payload.doc_id))
+                .add(entity::docorg_scope::Column::ScopeId.eq(payload.scope_id))
+            )
+        .join(JoinType::LeftJoin, entity::docorg_scope::Relation::Docorg.def())
+        .join(JoinType::LeftJoin, entity::docorg::Relation::Docuser.def())
+        .filter(entity::docuser::Column::Id.eq(claims.user_id))
+        .column_as(entity::docorg::Column::Id, "id")
+        .columns([entity::docorg::Column::Raw, entity::docorg::Column::DocuserId, entity::docorg::Column::Status])
+        .into_model::<DocorgWithScope>()
+        .one(&state.db_conn)
+        .await?;
+
+    if res.is_none() {
+        return Err(DocumentError::DocumentNotExist.into());
+    }
+    let res = res.unwrap();
+    
+    let publish_claims = DocumentClaims {
+        iat: chrono::Utc::now().timestamp(),
+        exp: (chrono::Utc::now() + chrono::Duration::minutes(10)).timestamp(),
+        iss: "docuvault".to_owned(),
+        doc_id: res.id,
+        scope_id: res.scope_id,
+        token_typ: "publish".to_owned(),
+    };
+    let publish_token = encode(&Header::default(), &publish_claims, &PUBLISH_KEYS.encoding).map_err(|err| DocumentError::from(err))?;
+    
+    Ok(Json(PublishResponse{
+        publish_token,
+    }))
+}
+
+async fn get_document(State(state): State<AppState>, Json(payload): Json<GetDocumentPayload>) -> Result<impl IntoResponse, GlobalError> {
+    let claims = get_claims(payload)?;
+
+    let res = entity::docorg::Entity::find()
+        .filter(entity::docorg::Column::Id.eq(claims.doc_id))
+        .one(&state.db_conn)
+        .await?;
+    if res.is_none() {
+        return Err(DocumentError::DocumentNotExist.into());
+    }
+    let res = res.unwrap();
+    if res.status != 1 {
+        return Ok(Json("This is private document".to_string()));
+    }
+    Ok(Json(res.raw))
+}
+

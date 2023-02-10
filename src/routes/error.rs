@@ -56,6 +56,7 @@ impl<E> From<sea_orm::TransactionError<E>> for GlobalError where E: Error{
 }
 impl From<RedisError> for GlobalError {
     fn from(value: RedisError) -> Self {
+        dbg!(value);
         Self::RedisError
     }
 }
