@@ -8,6 +8,7 @@ pub enum DocumentError {
     PublishTokenExpired,
     InvalidPublishToken,
     JwtCreationError,
+    UnitSizeZero,
 }
 impl IntoResponse for DocumentError {
     fn into_response(self) -> axum::response::Response {
@@ -17,7 +18,8 @@ impl IntoResponse for DocumentError {
             Self::PublishTokenMissing => (StatusCode::UNAUTHORIZED, "publish token is missing."),
             Self::PublishTokenExpired => (StatusCode::UNAUTHORIZED, "publish token is expired."),
             Self::InvalidPublishToken => (StatusCode::UNAUTHORIZED, "invalid publish token."),
-            Self::JwtCreationError => (StatusCode::INTERNAL_SERVER_ERROR, "jwt creation failed.")
+            Self::JwtCreationError => (StatusCode::INTERNAL_SERVER_ERROR, "jwt creation failed."),
+            Self::UnitSizeZero => (StatusCode::BAD_REQUEST, "unit size must not be zero"), 
         };
         res.into_response()
     }

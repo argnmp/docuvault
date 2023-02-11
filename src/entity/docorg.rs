@@ -10,6 +10,7 @@ pub struct Model {
     pub prev_id: Option<i32>,
     pub docuser_id: i32,
     pub raw: String,
+    pub title: String,
     pub created_at: DateTime,
     pub updated_at: DateTime,
     pub status: i32,
@@ -17,10 +18,6 @@ pub struct Model {
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
 pub enum Relation {
-    #[sea_orm(has_many = "super::docorg_scope::Entity")]
-    DocorgScope,
-    #[sea_orm(has_many = "super::docorg_tag::Entity")]
-    DocorgTag,
     #[sea_orm(
         belongs_to = "super::docuser::Entity",
         from = "Column::DocuserId",
@@ -31,21 +28,27 @@ pub enum Relation {
     Docuser,
 }
 
-impl Related<super::docorg_scope::Entity> for Entity {
-    fn to() -> RelationDef {
-        Relation::DocorgScope.def()
-    }
-}
-
-impl Related<super::docorg_tag::Entity> for Entity {
-    fn to() -> RelationDef {
-        Relation::DocorgTag.def()
-    }
-}
-
 impl Related<super::docuser::Entity> for Entity {
     fn to() -> RelationDef {
         Relation::Docuser.def()
+    }
+}
+
+impl Related<super::scope::Entity> for Entity {
+    fn to() -> RelationDef {
+        super::docorg_scope::Relation::Scope.def()
+    }
+    fn via() -> Option<RelationDef> {
+        Some(super::docorg_scope::Relation::Docorg.def().rev())
+    }
+}
+
+impl Related<super::tag::Entity> for Entity {
+    fn to() -> RelationDef {
+        super::docorg_tag::Relation::Tag.def()
+    }
+    fn via() -> Option<RelationDef> {
+        Some(super::docorg_tag::Relation::Docorg.def().rev())
     }
 }
 

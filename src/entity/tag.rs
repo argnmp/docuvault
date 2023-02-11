@@ -11,14 +11,14 @@ pub struct Model {
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
-pub enum Relation {
-    #[sea_orm(has_many = "super::docorg_tag::Entity")]
-    DocorgTag,
-}
+pub enum Relation {}
 
-impl Related<super::docorg_tag::Entity> for Entity {
+impl Related<super::docorg::Entity> for Entity {
     fn to() -> RelationDef {
-        Relation::DocorgTag.def()
+        super::docorg_tag::Relation::Docorg.def()
+    }
+    fn via() -> Option<RelationDef> {
+        Some(super::docorg_tag::Relation::Tag.def().rev())
     }
 }
 

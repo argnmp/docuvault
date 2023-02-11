@@ -30,6 +30,7 @@ impl MigrationTrait for Migration {
             .into_table(Docuser::Table)
             .columns([Docuser::Email, Docuser::Hash, Docuser::Nickname])
             .values_panic(["abc@abc.com".into(),"$argon2id$v=19$m=4096,t=3,p=1$04bZG/BgZ88j2z6hwm+KPw$F+jgyuh+RxFgpZfAA+heTAdsCyDjU67rOFODgRNxgMo".into(),"abc".into()])
+            .values_panic(["kim@kim.com".into(),"$argon2id$v=19$m=4096,t=3,p=1$04bZG/BgZ88j2z6hwm+KPw$F+jgyuh+RxFgpZfAA+heTAdsCyDjU67rOFODgRNxgMo".into(),"kim".into()])
             .or_default_values()
             .to_owned();
         manager.exec_stmt(insert).await?;
@@ -49,6 +50,7 @@ impl MigrationTrait for Migration {
                     .col(ColumnDef::new(Docorg::PrevId).integer())
                     .col(ColumnDef::new(Docorg::DocuserId).integer().not_null())
                     .col(ColumnDef::new(Docorg::Raw).string().not_null())
+                    .col(ColumnDef::new(Docorg::Title).string().not_null())
                     .col(ColumnDef::new(Docorg::CreatedAt).timestamp().not_null().extra("DEFAULT CURRENT_TIMESTAMP".to_string()))
                     .col(ColumnDef::new(Docorg::UpdatedAt).timestamp().not_null().extra("DEFAULT CURRENT_TIMESTAMP".to_string()))
                     //0: private, 1: public, 2: pending, 3: deleted
@@ -66,10 +68,13 @@ impl MigrationTrait for Migration {
 
         let insert = Query::insert()
             .into_table(Docorg::Table)
-            .columns([Docorg::DocuserId, Docorg::Raw, Docorg::Status])
-            .values_panic([1.into(), "hello world. this is new document".into(), 1.into()])
-            .values_panic([1.into(), "You must have chaos within you to give birth to a dancing star.".into(), 1.into()])
-            .values_panic([1.into(), "That which does not kill us makes us stronger.".into(), 1.into()])
+            .columns([Docorg::DocuserId, Docorg::Title, Docorg::Raw, Docorg::Status])
+            .values_panic([1.into(),"First document from user 1".into(), "hello world. this is new document".into(), 1.into()])
+            .values_panic([1.into(),"Second document from user 1".into(), "You must have chaos within you to give birth to a dancing star.".into(), 1.into()])
+            .values_panic([1.into(),"Third document from user 1".into(), "That which does not kill us makes us stronger.".into(), 1.into()])
+            .values_panic([2.into(),"First document from user 2".into(), "hello world. this is new document".into(), 1.into()])
+            .values_panic([2.into(),"Second document from user 2".into(), "You must have chaos within you to give birth to a dancing star.".into(), 1.into()])
+            .values_panic([2.into(),"Third document from user 2".into(), "That which does not kill us makes us stronger.".into(), 1.into()])
             .or_default_values()
             .to_owned();
         manager.exec_stmt(insert).await?;
@@ -281,6 +286,7 @@ enum Docorg {
     Table,
     Id,
     PrevId,
+    Title,
     DocuserId,
     Raw,
     CreatedAt,

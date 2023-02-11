@@ -9,6 +9,7 @@ use axum::{Router, extract::State, Json, response::IntoResponse, routing::post, 
 use jsonwebtoken::{encode, Header};
 use redis::AsyncCommands;
 use sea_orm::{entity::*, query::*, FromQueryResult};
+use serde::Serialize;
 use tokio::time::sleep;
 use tower_http::cors::{CorsLayer, Any};
 use crate::{AppState, entity};
@@ -26,8 +27,9 @@ use super::auth::object::Claims as Authenticate;
 
 pub fn create_router(shared_state: AppState) -> Router {
     Router::new()
-        .route("/create", post(create_document))
+        .route("/create", post(create))
         .route("/publish", post(publish))
+        .route("/resource/list", post(resource_list))
         .route("/", post(get_document))
         .layer(
             CorsLayer::new()
@@ -37,7 +39,7 @@ pub fn create_router(shared_state: AppState) -> Router {
             )
         .with_state(shared_state)
 }
-async fn create_document(State(state): State<AppState>, claims: Claims, Json(payload): Json<CreateDocumentPayload>) -> Result<impl IntoResponse, GlobalError>{
+async fn create(State(state): State<AppState>, claims: Claims, Json(payload): Json<CreateDocumentPayload>) -> Result<impl IntoResponse, GlobalError>{
     
     let res = entity::scope::Entity::find()
         .filter(Condition::all()
@@ -111,9 +113,6 @@ async fn create_document(State(state): State<AppState>, claims: Claims, Json(pay
             Ok(())
         })
     }).await?; 
-    
-
-
     Ok(())
 }
 
@@ -171,3 +170,53 @@ async fn get_document(State(state): State<AppState>, Json(payload): Json<GetDocu
     Ok(Json(res.raw))
 }
 
+async fn resource_list(State(state): State<AppState>, claims: Claims, Json(payload): Json<ResourceListPayload>) -> Result<impl IntoResponse, GlobalError> {
+    
+    //check user has the scope_id
+    let res = entity::scope::Entity::find()
+        .filter(Condition::all()
+                .add(entity::scope::Column::DocuserId.eq(claims.user_id))
+                .add(entity::scope::Column::Id.eq(payload.scope_id))
+                )
+        .one(&state.db_conn)
+        .await?;
+    if res.is_none() {
+        return Err(DocumentError::ScopeNotExist.into());
+    }
+
+    #[derive(FromQueryResult, Serialize, Debug)]
+    struct Docs {
+        id: i32,
+        scope_id: Option<i32>,
+        title: String,
+        created_at: chrono::NaiveDateTime,
+        updated_at: chrono::NaiveDateTime,
+    }
+    let unit_size = match payload.unit_size {
+        Some(value) => {
+            if value==0 {
+                return Err(DocumentError::UnitSizeZero.into())
+            }
+            value
+        },
+        None => 10000, 
+    };
+    let unit_number = match payload.unit_number {
+        Some(value) => value,
+        None => 0,
+    };
+    dbg!(unit_size);
+    let res = entity::docorg::Entity::find()
+        .filter(entity::docorg::Column::DocuserId.eq(claims.user_id))
+        .join_rev(JoinType::LeftJoin, entity::docorg_scope::Relation::Docorg.def())
+        .filter(entity::docorg_scope::Column::ScopeId.eq(payload.scope_id))
+        .column_as(entity::docorg_scope::Column::ScopeId, "scope_id")
+        .order_by_desc(entity::docorg::Column::CreatedAt)
+        .into_model::<Docs>()
+        .paginate(&state.db_conn, unit_size);
+        // .all(&state.db_conn)
+        // .await?;
+    let res = res.fetch_page(unit_number).await?; 
+
+    Ok(Json(res))
+}

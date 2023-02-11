@@ -13,8 +13,6 @@ pub struct Model {
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
 pub enum Relation {
-    #[sea_orm(has_many = "super::docorg_scope::Entity")]
-    DocorgScope,
     #[sea_orm(
         belongs_to = "super::docuser::Entity",
         from = "Column::DocuserId",
@@ -25,15 +23,18 @@ pub enum Relation {
     Docuser,
 }
 
-impl Related<super::docorg_scope::Entity> for Entity {
-    fn to() -> RelationDef {
-        Relation::DocorgScope.def()
-    }
-}
-
 impl Related<super::docuser::Entity> for Entity {
     fn to() -> RelationDef {
         Relation::Docuser.def()
+    }
+}
+
+impl Related<super::docorg::Entity> for Entity {
+    fn to() -> RelationDef {
+        super::docorg_scope::Relation::Docorg.def()
+    }
+    fn via() -> Option<RelationDef> {
+        Some(super::docorg_scope::Relation::Scope.def().rev())
     }
 }
 
