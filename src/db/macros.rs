@@ -1,5 +1,6 @@
 use bb8::Pool;
 use bb8_redis::RedisConnectionManager;
+
 #[derive(Debug)]
 pub struct RedisSchemaHeader {
     pub scope: String,
@@ -13,12 +14,11 @@ macro_rules! redis_schema {
         {
             use redis::AsyncCommands;
             use paste::paste;
-
             use crate::routes::error::GlobalError;
 
             #[allow(dead_code)]
             #[derive(Debug)]
-            struct RedisSchema {
+            pub struct RedisSchema {
                 header: RedisSchemaHeader,
                 $($($col: Option<$type>)+ ),*,
             }

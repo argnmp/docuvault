@@ -3,6 +3,8 @@ use axum::{
     http::StatusCode,
 };
 
+use crate::routes::error::GlobalError;
+
 #[derive(Debug)]
 pub enum AuthError {
     HashError,
@@ -33,6 +35,11 @@ impl IntoResponse for AuthError {
             Self::IpChanged => (StatusCode::BAD_REQUEST, "Ip changed"),
         };
         res.into_response()
+    }
+}
+impl From<AuthError> for GlobalError {
+    fn from(value: AuthError) -> Self {
+        Self::Auth(value)
     }
 }
 impl From<jsonwebtoken::errors::Error> for AuthError {

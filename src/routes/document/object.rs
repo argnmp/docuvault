@@ -16,10 +16,10 @@ use sea_orm::{entity::*, query::*, FromQueryResult, DatabaseConnection};
 use super::error::DocumentError;
 
 #[derive(Debug, Deserialize)]
-pub struct CreateDocumentPayload {
+pub struct CreatePayload {
     pub document: String,
     pub tags: Vec<String>,
-    pub scope_id: i32,
+    pub scope_id: Vec<i32>,
     pub prev_document_id: Option<i32>
 }
 
@@ -90,39 +90,4 @@ pub struct DocumentClaims {
     pub scope_id: i32,
 
 }
-// #[async_trait]
-// impl<S> FromRequestParts<S> for DocumentClaims
-    // where
-    // DatabaseConnection: FromRef<S>,
-    // Pool<RedisConnectionManager>: FromRef<S>,
-    // S: Sync + Send
-// {
-    // type Rejection = DocumentError;
-//
-    // async fn from_request_parts(parts: &mut Parts, state: &S) -> Result<Self, Self::Rejection> {
-        // dbg!("called claims");
-//
-        // let TypedHeader(Authorization(bearer)) = parts
-            // .extract::<TypedHeader<Authorization<Bearer>>>()
-            // .await
-            // .map_err(|_| DocumentError::PublishTokenMissing)?;
-//
-        // let token_data = decode::<DocumentClaims>(bearer.token(), &PUBLISH_KEYS.decoding, &Validation::default())
-            // .map_err(|err| {
-                // if err.into_kind() == ErrorKind::ExpiredSignature {
-                    // DocumentError::PublishTokenExpired
-                // }
-                // else {
-                    // DocumentError::InvalidPublishToken
-                // }
-            // })?;
-        // Ok(token_data.claims)
-    // }
-// }
 
-#[derive(Debug, Deserialize)]
-pub struct ResourceListPayload{
-    pub scope_id: i32,
-    pub unit_size: Option<u64>,
-    pub unit_number: Option<u64>,
-}

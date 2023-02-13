@@ -13,6 +13,7 @@ mod db;
 mod routes;
 mod middleware;
 mod bootstrap;
+mod modules;
 
 // database connection pool implements clone by internally using Arc
 #[derive(Clone, Debug)]

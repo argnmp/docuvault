@@ -9,6 +9,7 @@ use redis::RedisError;
 
 use super::auth::error::AuthError;
 use super::document::error::DocumentError;
+use super::resource::error::ResourceError;
 
 #[derive(Debug)]
 pub enum GlobalError {
@@ -20,6 +21,7 @@ pub enum GlobalError {
     RedisConnectionPoolError,
     Auth(AuthError),
     Document(DocumentError),
+    Resource(ResourceError),
 }
 impl Display for GlobalError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -37,7 +39,9 @@ impl IntoResponse for GlobalError {
             Self::RedisError => (StatusCode::INTERNAL_SERVER_ERROR, "Redis error").into_response(),
             Self::RedisConnectionPoolError => (StatusCode::INTERNAL_SERVER_ERROR, "Redis bb8 connection pool error").into_response(),
             Self::Auth(error) => error.into_response(),
-            Self::Document(error) => error.into_response()
+            Self::Document(error) => error.into_response(),
+            Self::Resource(error) => error.into_response(),
+                
         }
     }
 }
@@ -63,15 +67,5 @@ impl From<RedisError> for GlobalError {
 impl<E> From<bb8::RunError<E>> for GlobalError {
     fn from(value: bb8::RunError<E>) -> Self {
         Self::RedisConnectionPoolError 
-    }
-}
-impl From<AuthError> for GlobalError {
-    fn from(value: AuthError) -> Self {
-        Self::Auth(value)
-    }
-}
-impl From<DocumentError> for GlobalError {
-    fn from(value: DocumentError) -> Self {
-        Self::Document(value)
     }
 }
