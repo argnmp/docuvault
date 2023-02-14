@@ -13,6 +13,7 @@ use serde::Serialize;
 use tokio::time::sleep;
 use tower_http::cors::{CorsLayer, Any};
 use crate::db::macros::RedisSchemaHeader;
+use crate::modules::markdown::get_title;
 use crate::modules::redis::redis_does_docuser_have_scope;
 use crate::{AppState, entity, redis_schema};
 
@@ -50,7 +51,7 @@ async fn create(State(state): State<AppState>, claims: Claims, Json(payload): Js
     state.db_conn.transaction::<_, (), GlobalError>(|txn|{
         Box::pin(async move {
             let new_doc = entity::docorg::ActiveModel {
-                title: Set(format!("document from user {}", claims.user_id)),
+                title: Set(get_title(&payload.document)),
                 raw: Set(payload.document), 
                 docuser_id: Set(claims.user_id),
                 status: Set(1),

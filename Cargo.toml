@@ -27,3 +27,4 @@ redis = { version = "0.22.3", features = ["tokio-comp"] }
 bb8-redis = "0.12.0"
 bb8 = "0.8.0"
 paste = "1.0.11"
+comrak = "0.16.0"

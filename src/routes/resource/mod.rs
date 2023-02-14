@@ -115,9 +115,10 @@ async fn list(State(state): State<AppState>, claims: Claims, Json(payload): Json
                 list.push(compdocs);
 
             }
-
         } 
     } 
-    dbg!(&list);
+    if let Some(tag_id) = payload.tag_id {
+        list = list.into_iter().filter(|compdocs| compdocs.tag_ids.contains(&tag_id)).collect::<Vec<CompDocs>>();
+    }
     Ok(Json(list))
 }
