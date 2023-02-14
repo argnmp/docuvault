@@ -6,7 +6,7 @@ use serde::Serialize;
 use tower_http::cors::{CorsLayer, Any};
 use sea_orm::{entity::*, query::*};
 
-use crate::{AppState, entity, modules::redis::redis_does_docuser_have_scope, routes::document::error::DocumentError};
+use crate::{AppState, entity, modules::redis::{redis_does_docuser_have_scope}, routes::document::error::DocumentError};
 
 pub mod object;
 use object::*;
@@ -20,6 +20,7 @@ use super::auth::object::Claims as Authenticate;
 pub fn create_router(shared_state: AppState) -> Router {
     Router::new()
         .route("/list", post(list))
+        .route("/tag", post(tag))
         .layer(
             CorsLayer::new()
                 .allow_origin(Any)
@@ -27,6 +28,60 @@ pub fn create_router(shared_state: AppState) -> Router {
                 .allow_headers([header::CONTENT_TYPE])
             )
         .with_state(shared_state)
+}
+async fn tag(State(state): State<AppState>, claims: Claims, Json(payload): Json<TagPayload>) -> Result<impl IntoResponse, GlobalError> {
+    /*
+     * need for redis optimization
+     */
+
+    redis_does_docuser_have_scope(state.clone(), &payload.scope_id[..], claims.user_id).await?;
+    let mut scope_id_cond = Condition::any();
+    for scope_id in payload.scope_id {
+        scope_id_cond = scope_id_cond.add(entity::docorg_scope::Column::ScopeId.eq(scope_id));
+    }
+    
+    #[derive(FromQueryResult, Serialize, Debug)]
+    struct Docs {
+        id: i32,
+        scope_id: i32,
+        tag_id: Option<i32>,
+        tag_value: Option<String>,
+    }
+    let res = entity::docorg::Entity::find()
+        .filter(entity::docorg::Column::DocuserId.eq(claims.user_id))
+        .join_rev(JoinType::LeftJoin, entity::docorg_scope::Relation::Docorg.def())
+        .join_rev(JoinType::LeftJoin, entity::docorg_tag::Relation::Docorg.def())
+        .join_rev(JoinType::LeftJoin, entity::tag::Entity::belongs_to(entity::docorg_tag::Entity)
+                  .from(entity::tag::Column::Id)
+                  .to(entity::docorg_tag::Column::TagId)
+                  .into())
+        .filter(scope_id_cond)
+        .column_as(entity::docorg_scope::Column::ScopeId, "scope_id")
+        .column_as(entity::docorg_tag::Column::TagId, "tag_id")
+        .column_as(entity::tag::Column::Value, "tag_value")
+        .into_model::<Docs>()
+        .all(&state.db_conn)
+        .await?;
+    
+    #[derive(Serialize)]
+    struct Tag {
+        id: i32,
+        value: String,
+    }
+    let mut tag_set = BTreeSet::new(); 
+    let tag_set = res.into_iter().fold(tag_set, move |mut acc, m|{
+        match m.tag_id {
+            Some(id) => {acc.insert((id, m.tag_value.unwrap()));},
+            None => (),
+        }
+        acc
+    });
+    let tag_vec: Vec<Tag> = tag_set.into_iter().map(|(id, value)| Tag {
+        id,
+        value,
+    }).collect();
+
+    Ok(Json(tag_vec))
 }
 async fn list(State(state): State<AppState>, claims: Claims, Json(payload): Json<ListPayload>) -> Result<impl IntoResponse, GlobalError> {
     
