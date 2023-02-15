@@ -30,7 +30,6 @@ use super::auth::object::Claims as Authenticate;
 
 pub fn create_router(shared_state: AppState) -> Router {
     Router::new()
-        .route("/test", get(test))
         .route("/create", post(create))
         .route("/publish", post(publish))
         .route("/", post(get_document))
