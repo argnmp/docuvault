@@ -30,6 +30,7 @@ use super::auth::object::Claims as Authenticate;
 
 pub fn create_router(shared_state: AppState) -> Router {
     Router::new()
+        .route("/test", get(test))
         .route("/create", post(create))
         .route("/publish", post(publish))
         .route("/", post(get_document))
@@ -170,3 +171,28 @@ async fn get_document(State(state): State<AppState>, Json(payload): Json<GetDocu
     Ok(Json(res.raw))
 }
 
+async fn test(State(state): State<AppState>) -> Result<impl IntoResponse, GlobalError> {
+    use macros::redis_schema; 
+    #[redis_schema(scope="temp")]
+    struct Temp {
+        temp1: i32,
+        temp2: String,
+    }
+
+    let header = RedisSchemaHeader {
+            scope: "temp".to_string(), 
+            key: "777".to_string(),
+            expire_at: None,
+            con: state.redis_conn.clone(),
+        };
+    let mut a = Temp::new(header);
+    dbg!(&a);
+    a.get_temp1().await?;
+    a.get_temp2().await?;
+    dbg!(&a);
+    a.del_all().await?;
+    dbg!(&a);
+
+
+    Ok(())
+}

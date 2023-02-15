@@ -32,7 +32,6 @@ impl FromRef<AppState> for Pool<RedisConnectionManager> {
     }
 }
 
-
 #[tokio::main]
 async fn main() {
     dotenvy::dotenv().ok();
