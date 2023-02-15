@@ -25,7 +25,7 @@ pub fn redis_schema(args: TokenStream, input: TokenStream) -> TokenStream {
     let mut expanded_fields = TokenStream2::default();
     let mut default_fields = TokenStream2::default();
     zipped.clone().for_each(|(ident, ty)|{
-        expanded_fields.extend::<TokenStream2>(quote!(#ident: Option<#ty>,));
+        expanded_fields.extend::<TokenStream2>(quote!(pub #ident: Option<#ty>,));
         default_fields.extend::<TokenStream2>(quote!(#ident: None,));
     });
 
@@ -54,7 +54,7 @@ pub fn redis_schema(args: TokenStream, input: TokenStream) -> TokenStream {
             let set_method = format_ident!("set_{}", ident);
             set_methods = quote!{
                 #set_methods
-                fn #set_method(&mut self, target: #ty) -> &mut Self{
+                pub fn #set_method(&mut self, target: #ty) -> &mut Self{
                     self.#ident = Some(target);
                     self  
                 }
@@ -62,7 +62,7 @@ pub fn redis_schema(args: TokenStream, input: TokenStream) -> TokenStream {
             let get_method = format_ident!("get_{}", ident);
             get_methods = quote!{
                 #get_methods
-                async fn #get_method(&mut self) -> Result<&mut Self, GlobalError> {
+                pub async fn #get_method(&mut self) -> Result<&mut Self, GlobalError> {
                     let con = self.header.con.clone();
                     let mut con = con.get().await?;
                     let key = format!("{}:{}:{}",self.scope, self.header.key, stringify!(#ident));
@@ -77,35 +77,33 @@ pub fn redis_schema(args: TokenStream, input: TokenStream) -> TokenStream {
 
     let output = quote!(
         #[derive(Debug)]
-        struct #struct_name {
+        pub struct #struct_name {
             scope: String,
             header: RedisSchemaHeader,
             #expanded_fields
         }
 
         impl #struct_name {
-            fn new(header: RedisSchemaHeader) -> Self{
+            pub fn new(header: RedisSchemaHeader) -> Self{
                 Self {
                     scope: #scope.into(),
                     header,
                     #default_fields 
                 }
             }
-            async fn flush(&mut self) -> Result<&mut Self, GlobalError>{
+            pub async fn flush(&mut self) -> Result<&mut Self, GlobalError>{
                 let con = self.header.con.clone();
                 let mut con = con.get().await?;
 
                 #flush_method
                 Ok(self)
             }
-            async fn del_all(&mut self) -> Result<&mut Self, GlobalError>{
+            pub async fn del_all(&mut self) -> Result<&mut Self, GlobalError>{
                 let con = self.header.con.clone();
                 let mut con = con.get().await?;
                 #del_all_method
                 Ok(self)
             }
-
-                
 
             #set_methods
             #get_methods

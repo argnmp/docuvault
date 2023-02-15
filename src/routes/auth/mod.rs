@@ -112,6 +112,7 @@ async fn issue(State(state): State<AppState>, ConnectInfo(addr): ConnectInfo<Soc
         token_typ: "refresh".to_owned(),
     };
     let refresh_token = encode(&Header::default(), &refresh_claims, &REFRESH_KEYS.encoding).map_err(|err|AuthError::from(err))?;
+    
 
     let redis_header = RedisSchemaHeader {
         scope: "token_pair".to_string(), 

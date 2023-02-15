@@ -20,6 +20,7 @@ pub async fn postgres_connect() -> DatabaseConnection {
 }
 
 pub mod macros;
+pub mod schema;
 pub async fn redis_connect() -> Pool<RedisConnectionManager> {
     let manager = RedisConnectionManager::new(env::var("REDIS_URL").expect("redis url is not set")).unwrap();
     let pool = bb8::Pool::builder().build(manager).await.unwrap();
