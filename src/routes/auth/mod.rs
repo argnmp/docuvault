@@ -8,7 +8,7 @@ use serde_json::json;
 use redis::{AsyncCommands};
 
 
-use crate::{redis_schema, db::macros::RedisSchemaHeader};
+use crate::{redis_schema, db::{schema::redis::{TokenPair, RedisSchemaHeader, Refresh, BlackList}}};
 use crate::AppState;
 use crate::entity;
 use crate::middleware::guard::Authenticate;
@@ -97,7 +97,7 @@ async fn issue(State(state): State<AppState>, ConnectInfo(addr): ConnectInfo<Soc
 
     let access_claims = Claims {
         iat: chrono::Utc::now().timestamp(),
-        exp: (chrono::Utc::now() + chrono::Duration::days(10)).timestamp(),
+        exp: (chrono::Utc::now() + chrono::Duration::minutes(10)).timestamp(),
         iss: "docuvault".to_owned(),
         user_id: qr.id,
         token_typ: "access".to_owned(),
@@ -113,23 +113,19 @@ async fn issue(State(state): State<AppState>, ConnectInfo(addr): ConnectInfo<Soc
     };
     let refresh_token = encode(&Header::default(), &refresh_claims, &REFRESH_KEYS.encoding).map_err(|err|AuthError::from(err))?;
     
-
-    let redis_header = RedisSchemaHeader {
-        scope: "token_pair".to_string(), 
+    
+    let mut schema =  TokenPair::new(RedisSchemaHeader {
         key: access_token.clone(),
         expire_at: Some(access_claims.exp as usize),
         con: state.redis_conn.clone(),
-    };
-    let mut schema = redis_schema!(redis_header, { refresh_token: String });
+    });
     schema.set_refresh_token(refresh_token.clone()).flush().await?;
 
-    let redis_header = RedisSchemaHeader {
-        scope: "refresh".to_string(),
+    let mut schema = Refresh::new(RedisSchemaHeader {
         key: refresh_token.clone(),
         expire_at: Some(refresh_claims.exp as usize),
         con: state.redis_conn.clone(),
-    };
-    let mut schema = redis_schema!(redis_header, { ip: String });
+    });
     schema.set_ip(addr.to_string()).flush().await?;
     
     Ok(Json(IssueResponse{
@@ -138,32 +134,26 @@ async fn issue(State(state): State<AppState>, ConnectInfo(addr): ConnectInfo<Soc
     }))
 }
 async fn disconnect(State(state): State<AppState>, TypedHeader(Authorization(bearer)): TypedHeader<Authorization<Bearer>>, claims: Claims) -> Result<impl IntoResponse, GlobalError> {
-    let redis_header = RedisSchemaHeader {
-        scope: "blacklist".to_string(),
+    let mut schema = BlackList::new(RedisSchemaHeader {
         key: bearer.token().to_string(),
         expire_at: Some(claims.exp as usize),
         con: state.redis_conn.clone(),
-    };
-    let mut schema = redis_schema!(redis_header, {status: bool});
+    });
     schema.set_status(true).flush().await?;
 
-    let redis_header = RedisSchemaHeader {
-        scope: "token_pair".to_string(), 
+    let mut token_pair_schema = TokenPair::new(RedisSchemaHeader {
         key: bearer.token().to_string(),
         expire_at: None,
         con: state.redis_conn.clone(),
-    };
-    let mut token_pair_schema = redis_schema!(redis_header, { refresh_token: String });
+    });
     token_pair_schema.get_refresh_token().await?;
 
     if token_pair_schema.refresh_token.is_some() {
-        let redis_header = RedisSchemaHeader {
-            scope: "refresh".to_string(),
+        let mut schema = Refresh::new(RedisSchemaHeader {
             key: token_pair_schema.refresh_token.clone().unwrap(),
             expire_at: None,
             con: state.redis_conn.clone(),
-        };
-        let mut schema = redis_schema!(redis_header, { ip: String });
+        });
         schema.del_all().await?;
     }
     token_pair_schema.del_all().await?;
@@ -173,13 +163,11 @@ async fn disconnect(State(state): State<AppState>, TypedHeader(Authorization(bea
 
 async fn refresh(State(state): State<AppState>, ConnectInfo(addr): ConnectInfo<SocketAddr>, TypedHeader(Authorization(bearer)): TypedHeader<Authorization<Bearer>>) -> Result<impl IntoResponse, GlobalError> {
 
-    let redis_header = RedisSchemaHeader {
-        scope: "refresh".to_string(),
+    let mut refresh_schema = Refresh::new(RedisSchemaHeader {
         key: bearer.token().to_string(),
         expire_at: None,
         con: state.redis_conn.clone(),
-    };
-    let mut refresh_schema = redis_schema!(redis_header, { ip: String });
+    });
     refresh_schema.get_ip().await?;
 
     if refresh_schema.ip.is_none() {
@@ -216,13 +204,11 @@ async fn refresh(State(state): State<AppState>, ConnectInfo(addr): ConnectInfo<S
 
     let access_token = encode(&Header::default(), &claims, &ACCESS_KEYS.encoding).map_err(|err|AuthError::from(err))?;
 
-    let redis_header = RedisSchemaHeader {
-        scope: "token_pair".to_string(), 
+    let mut schema = TokenPair::new(RedisSchemaHeader {
         key: access_token.clone(),
         expire_at: Some(claims.exp as usize),
         con: state.redis_conn.clone(),
-    };
-    let mut schema = redis_schema!(redis_header, { refresh_token: String });
+    });
     schema.set_refresh_token(bearer.token().to_string()).flush().await?;
 
     Ok(Json(RefreshResponse{

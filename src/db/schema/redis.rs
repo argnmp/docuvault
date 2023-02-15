@@ -16,3 +16,16 @@ pub struct Scope{
     pub docuser_id: i32,
     pub name: String,
 }
+#[redis_schema(scope="token_pair")]
+pub struct TokenPair{
+    pub refresh_token: String 
+}
+#[redis_schema(scope="refresh")]
+pub struct Refresh{
+    pub ip: String,
+}
+#[redis_schema(scope="blacklist")]
+pub struct BlackList{
+    pub status: bool,
+}
+
