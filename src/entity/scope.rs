@@ -38,4 +38,13 @@ impl Related<super::docorg::Entity> for Entity {
     }
 }
 
+impl Related<super::sequence::Entity> for Entity {
+    fn to() -> RelationDef {
+        super::scope_sequence::Relation::Sequence.def()
+    }
+    fn via() -> Option<RelationDef> {
+        Some(super::scope_sequence::Relation::Scope.def().rev())
+    }
+}
+
 impl ActiveModelBehavior for ActiveModel {}

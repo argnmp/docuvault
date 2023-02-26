@@ -10,6 +10,10 @@ pub enum DocumentError {
     PublishTokenExpired,
     InvalidPublishToken,
     JwtCreationError,
+    PrivateDocument,
+    DocumentNotConverted, 
+    ConvertPending,
+    ConvertFailed,
 }
 impl IntoResponse for DocumentError {
     fn into_response(self) -> axum::response::Response {
@@ -20,6 +24,10 @@ impl IntoResponse for DocumentError {
             Self::PublishTokenExpired => (StatusCode::UNAUTHORIZED, "publish token is expired."),
             Self::InvalidPublishToken => (StatusCode::UNAUTHORIZED, "invalid publish token."),
             Self::JwtCreationError => (StatusCode::INTERNAL_SERVER_ERROR, "jwt creation failed."),
+            Self::PrivateDocument => (StatusCode::BAD_REQUEST, "private document"),
+            Self::DocumentNotConverted => (StatusCode::NO_CONTENT, "target type is not converted"),
+            Self::ConvertPending => (StatusCode::BAD_REQUEST, "target content type conversion is in process"),
+            Self::ConvertFailed => (StatusCode::BAD_REQUEST, "target content type conversion failed"),
         };
         res.into_response()
     }

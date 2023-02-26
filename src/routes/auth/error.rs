@@ -1,6 +1,6 @@
 use axum::{
     response::IntoResponse,
-    http::StatusCode,
+    http::StatusCode, Json,
 };
 
 use crate::routes::error::GlobalError;
@@ -34,6 +34,7 @@ impl IntoResponse for AuthError {
             Self::InvalidToken => (StatusCode::UNAUTHORIZED, "invalid token"),
             Self::IpChanged => (StatusCode::BAD_REQUEST, "Ip changed"),
         };
+        let res = (res.0, Json(res.1));
         res.into_response()
     }
 }

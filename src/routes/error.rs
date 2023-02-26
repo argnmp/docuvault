@@ -54,6 +54,7 @@ impl From<sea_orm::error::DbErr> for GlobalError {
 }
 impl<E> From<sea_orm::TransactionError<E>> for GlobalError where E: Error{
     fn from(value: sea_orm::TransactionError<E>) -> Self {
+        // need to be modified for returning resource or document or auth errors
         dbg!(value); 
         GlobalError::DbTrxError
     }

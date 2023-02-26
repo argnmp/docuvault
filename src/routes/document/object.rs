@@ -15,12 +15,12 @@ use sea_orm::{entity::*, query::*, FromQueryResult, DatabaseConnection};
 
 use super::error::DocumentError;
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 pub struct CreatePayload {
-    pub document: String,
+    pub raw: String,
     pub tags: Vec<String>,
-    pub scope_id: Vec<i32>,
-    pub prev_document_id: Option<i32>
+    pub scope_ids: Vec<i32>,
+    pub seq_id: Option<i32>,
 }
 
 pub struct Keys {
@@ -46,6 +46,7 @@ pub static PUBLISH_KEYS: Lazy<Keys> = Lazy::new(||{
 pub struct PublishPayload {
     pub doc_id: i32,
     pub scope_id: i32,
+    pub c_type: i32,
 }
 #[derive(Debug, Serialize)]
 pub struct PublishResponse {
@@ -86,8 +87,28 @@ pub struct DocumentClaims {
     pub exp       : i64,
     pub iss       : String,
     pub token_typ : String,
+    pub c_type: i32,
     pub doc_id: i32,
     pub scope_id: i32,
+}
 
+#[derive(Debug, Deserialize)]
+pub struct GetUpdateResourcePayload {
+    pub scope_ids: Vec<i32>
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct UpdatePayload {
+    pub doc_id: i32,
+    pub raw: String,
+    pub tags: Vec<String>,
+    pub scope_ids: Vec<i32>,
+    pub prev_document_id: Option<i32>,
+    pub created_at: Option<chrono::NaiveDateTime>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct DeletePayload {
+    pub doc_ids: Vec<i32>,
 }
 

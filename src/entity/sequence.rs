@@ -3,23 +3,16 @@
 use sea_orm::entity::prelude::*;
 
 #[derive(Clone, Debug, PartialEq, DeriveEntityModel, Eq)]
-#[sea_orm(table_name = "docorg")]
+#[sea_orm(table_name = "sequence")]
 pub struct Model {
     #[sea_orm(primary_key)]
     pub id: i32,
-    pub prev_id: Option<i32>,
-    pub docuser_id: i32,
-    pub raw: String,
     pub title: String,
-    pub created_at: DateTime,
-    pub updated_at: DateTime,
-    pub status: i32,
+    pub docuser_id: i32,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
 pub enum Relation {
-    #[sea_orm(has_many = "super::convert::Entity")]
-    Convert,
     #[sea_orm(
         belongs_to = "super::docuser::Entity",
         from = "Column::DocuserId",
@@ -30,42 +23,27 @@ pub enum Relation {
     Docuser,
 }
 
-impl Related<super::convert::Entity> for Entity {
-    fn to() -> RelationDef {
-        Relation::Convert.def()
-    }
-}
-
 impl Related<super::docuser::Entity> for Entity {
     fn to() -> RelationDef {
         Relation::Docuser.def()
     }
 }
 
-impl Related<super::sequence::Entity> for Entity {
+impl Related<super::docorg::Entity> for Entity {
     fn to() -> RelationDef {
-        super::docorg_sequence::Relation::Sequence.def()
+        super::docorg_sequence::Relation::Docorg.def()
     }
     fn via() -> Option<RelationDef> {
-        Some(super::docorg_sequence::Relation::Docorg.def().rev())
+        Some(super::docorg_sequence::Relation::Sequence.def().rev())
     }
 }
 
 impl Related<super::scope::Entity> for Entity {
     fn to() -> RelationDef {
-        super::docorg_scope::Relation::Scope.def()
+        super::scope_sequence::Relation::Scope.def()
     }
     fn via() -> Option<RelationDef> {
-        Some(super::docorg_scope::Relation::Docorg.def().rev())
-    }
-}
-
-impl Related<super::tag::Entity> for Entity {
-    fn to() -> RelationDef {
-        super::docorg_tag::Relation::Tag.def()
-    }
-    fn via() -> Option<RelationDef> {
-        Some(super::docorg_tag::Relation::Docorg.def().rev())
+        Some(super::scope_sequence::Relation::Sequence.def().rev())
     }
 }
 

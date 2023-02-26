@@ -20,6 +20,8 @@ pub enum Relation {
     Docorg,
     #[sea_orm(has_many = "super::scope::Entity")]
     Scope,
+    #[sea_orm(has_many = "super::sequence::Entity")]
+    Sequence,
 }
 
 impl Related<super::docorg::Entity> for Entity {
@@ -31,6 +33,12 @@ impl Related<super::docorg::Entity> for Entity {
 impl Related<super::scope::Entity> for Entity {
     fn to() -> RelationDef {
         Relation::Scope.def()
+    }
+}
+
+impl Related<super::sequence::Entity> for Entity {
+    fn to() -> RelationDef {
+        Relation::Sequence.def()
     }
 }
 

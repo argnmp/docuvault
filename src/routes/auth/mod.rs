@@ -1,11 +1,12 @@
 use std::{net::SocketAddr, str::FromStr};
 
-use axum::{Router, routing::{get, post}, response::{Html, IntoResponse}, extract::{State, ConnectInfo}, Json, middleware::{from_extractor, from_extractor_with_state}, TypedHeader, headers::{Authorization, authorization::Bearer}};
+use axum::{Router, routing::{get, post}, response::{Html, IntoResponse}, extract::{State, ConnectInfo}, Json, middleware::{from_extractor, from_extractor_with_state}, TypedHeader, headers::{Authorization, authorization::Bearer}, http::{Method, header}};
 use jsonwebtoken::{encode, Header, decode, Validation, errors::ErrorKind};
 use sea_orm::{entity::*, query::*};
 use regex::Regex;
 use serde_json::json;
 use redis::{AsyncCommands};
+use tower_http::cors::{CorsLayer, Any};
 
 
 use crate::{redis_schema, db::{schema::redis::{TokenPair, RedisSchemaHeader, Refresh, BlackList}}};
@@ -35,6 +36,12 @@ pub fn create_router(shared_state: AppState) -> Router {
         .route("/register", post(register))
         .route("/issue", post(issue))
         .route("/refresh", get(refresh))
+        .layer(
+            CorsLayer::new()
+                .allow_origin(Any)
+                .allow_methods([Method::POST])
+                .allow_headers([header::CONTENT_TYPE])
+            )
         .with_state(shared_state)
 }
 async fn test(State(state): State<AppState>) -> impl IntoResponse {
@@ -97,7 +104,7 @@ async fn issue(State(state): State<AppState>, ConnectInfo(addr): ConnectInfo<Soc
 
     let access_claims = Claims {
         iat: chrono::Utc::now().timestamp(),
-        exp: (chrono::Utc::now() + chrono::Duration::minutes(10)).timestamp(),
+        exp: (chrono::Utc::now() + chrono::Duration::minutes(30)).timestamp(),
         iss: "docuvault".to_owned(),
         user_id: qr.id,
         token_typ: "access".to_owned(),

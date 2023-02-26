@@ -15,6 +15,7 @@ mod middleware;
 mod bootstrap;
 mod modules;
 
+
 // database connection pool implements clone by internally using Arc
 #[derive(Clone, Debug)]
 pub struct AppState {
@@ -49,11 +50,13 @@ async fn main() {
         db_conn,
         redis_conn 
     };
+
     
     let addr = SocketAddr::from(([127, 0, 0, 1], 8000));
     
     bootstrap::bootstrap(state.clone()).await;
     
+
 
     tracing::debug!("listening on {}", addr);
     axum::Server::bind(&addr)

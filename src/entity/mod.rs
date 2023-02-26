@@ -2,10 +2,14 @@
 
 pub mod prelude;
 
+pub mod convert;
 pub mod docorg;
 pub mod docorg_scope;
+pub mod docorg_sequence;
 pub mod docorg_tag;
 pub mod docuser;
 pub mod image;
 pub mod scope;
+pub mod scope_sequence;
+pub mod sequence;
 pub mod tag;
