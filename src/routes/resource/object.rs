@@ -17,6 +17,7 @@ pub struct Docs {
     pub id: i32,
     pub scope_id: i32,
     pub title: String,
+    pub seq_id: Option<i32>,
     pub created_at: chrono::NaiveDateTime,
     pub updated_at: chrono::NaiveDateTime,
     pub tag_id: Option<i32>,
@@ -25,6 +26,7 @@ pub struct Docs {
 pub struct CompDocs {
     pub id: i32,
     pub scope_ids: BTreeSet<i32>,
+    pub seq_ids: BTreeSet<i32>,
     pub title: String,
     pub created_at: chrono::NaiveDateTime,
     pub updated_at: chrono::NaiveDateTime,
@@ -69,6 +71,15 @@ pub struct SequenceAllPayload{
 pub struct SequenceListPayload{
     pub scope_ids: Vec<i32>,
     pub seq_id: i32, 
+}
+#[derive(Debug, Deserialize)]
+pub struct SeqNewPayload{
+    pub scope_ids: Vec<i32>,
+    pub title: String, 
+}
+#[derive(Debug, Deserialize)]
+pub struct SeqDeletePayload{
+    pub seq_id: i32,
 }
 
 #[derive(Debug, Deserialize)]

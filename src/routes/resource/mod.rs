@@ -24,6 +24,8 @@ pub fn create_router(shared_state: AppState) -> Router {
         .route("/scope/all", post(scope::all))
         .route("/sequence/all", post(sequence::all))
         .route("/sequence/list", post(sequence::list))
+        .route("/sequence/new", post(sequence::new))
+        .route("/sequence/delete", post(sequence::delete))
         //dashboard only
         .route("/sequence/out", post(sequence::doc_out))
         //dashboard only
@@ -168,6 +170,53 @@ mod sequence {
 
         Ok(Json(list))
     }       
+    pub async fn new(State(state): State<AppState>, claims: Claims, Json(payload): Json<SeqNewPayload>) -> Result<impl IntoResponse, GlobalError> {
+        /*
+         * check user has scope ID
+         */
+        redis_does_docuser_have_scope(state.clone(), &payload.scope_ids[..], claims.user_id).await?;
+
+        state.db_conn.clone().transaction::<_, (), GlobalError>(|txn|{
+            Box::pin(async move {
+                let seq = entity::sequence::ActiveModel {
+                    title: Set(payload.title),
+                    docuser_id: Set(claims.user_id),
+                    ..Default::default()
+                };
+                let seqres = entity::sequence::Entity::insert(seq).exec(txn).await?;
+
+                let mut scoseqs = vec![];
+                for scope_id in payload.scope_ids {
+                    scoseqs.push(entity::scope_sequence::ActiveModel {
+                        sequence_id: Set(seqres.last_insert_id),
+                        scope_id: Set(scope_id),
+                    });
+                }
+                let res = entity::scope_sequence::Entity::insert_many(scoseqs).exec(txn).await?;
+                Ok(())
+            })
+        }).await?;
+        
+        Ok(())
+    }
+
+    pub async fn delete(State(state): State<AppState>, claims: Claims, Json(payload): Json<SeqDeletePayload>) -> Result<impl IntoResponse, GlobalError> {
+        // check user has sequence
+        let res = entity::sequence::Entity::find_by_id(payload.seq_id)
+            .filter(entity::sequence::Column::DocuserId.eq(claims.user_id))
+            .one(&state.db_conn)
+            .await?;
+        if res.is_none() {
+            return Err(ResourceError::SequenceNotExist.into())
+        }
+        let res = entity::sequence::Entity::delete_many()
+            .filter(entity::sequence::Column::Id.eq(payload.seq_id))
+            .exec(&state.db_conn)
+            .await?;
+        
+        Ok(())
+    }
+    
     pub async fn doc_out(State(state): State<AppState>, claims: Claims, Json(payload): Json<SeqOutPayload>) -> Result<impl IntoResponse, GlobalError> {
         // doesn't matter the scopes thisi document is assigned.
         // only author of document is previleged to do this function
@@ -302,6 +351,7 @@ async fn tag(State(state): State<AppState>, claims: Claims, Json(payload): Json<
      */
 
     redis_does_docuser_have_scope(state.clone(), &payload.scope_ids[..], claims.user_id).await?;
+
     let mut scope_id_cond = Condition::any();
     for scope_id in payload.scope_ids {
         scope_id_cond = scope_id_cond.add(entity::docorg_scope::Column::ScopeId.eq(scope_id));
@@ -384,9 +434,11 @@ async fn list(State(state): State<AppState>, claims: Claims, Json(payload): Json
         .filter(entity::docorg::Column::DocuserId.eq(claims.user_id))
         .join_rev(JoinType::LeftJoin, entity::docorg_scope::Relation::Docorg.def())
         .join_rev(JoinType::LeftJoin, entity::docorg_tag::Relation::Docorg.def())
+        .join_rev(JoinType::LeftJoin, entity::docorg_sequence::Relation::Docorg.def())
         .filter(scope_id_cond)
         .column_as(entity::docorg_scope::Column::ScopeId, "scope_id")
         .column_as(entity::docorg_tag::Column::TagId, "tag_id")
+        .column_as(entity::docorg_sequence::Column::SequenceId, "seq_id")
         .order_by_desc(entity::docorg::Column::CreatedAt)
         .order_by_desc(entity::docorg::Column::Id)
         .into_model::<Docs>()
@@ -403,11 +455,15 @@ async fn list(State(state): State<AppState>, claims: Claims, Json(payload): Json
                 if let Some(tag_id) = docs.tag_id {
                     compdocs.tag_ids.insert(tag_id);
                 }
+                if let Some(seq_id) = docs.seq_id {
+                    compdocs.seq_ids.insert(seq_id);
+                }
             }
             _ => {
                 let mut compdocs = CompDocs{
                     id: docs.id,
                     scope_ids: BTreeSet::new(),
+                    seq_ids: BTreeSet::new(),
                     title: docs.title,
                     created_at: docs.created_at,
                     updated_at: docs.updated_at,

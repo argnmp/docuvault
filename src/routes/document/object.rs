@@ -45,7 +45,7 @@ pub static PUBLISH_KEYS: Lazy<Keys> = Lazy::new(||{
 #[derive(Debug, Deserialize)]
 pub struct PublishPayload {
     pub doc_id: i32,
-    pub scope_id: i32,
+    pub scope_ids: Vec<i32>,
     pub c_type: i32,
 }
 #[derive(Debug, Serialize)]
@@ -103,8 +103,8 @@ pub struct UpdatePayload {
     pub raw: String,
     pub tags: Vec<String>,
     pub scope_ids: Vec<i32>,
-    pub prev_document_id: Option<i32>,
     pub created_at: Option<chrono::NaiveDateTime>,
+    pub seq_id: Option<i32>,
 }
 
 #[derive(Debug, Deserialize)]

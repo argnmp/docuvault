@@ -83,8 +83,6 @@ impl<S> FromRequestParts<S> for Claims
     type Rejection = AuthError;
 
     async fn from_request_parts(parts: &mut Parts, state: &S) -> Result<Self, Self::Rejection> {
-        dbg!("called claims");
-
         let TypedHeader(Authorization(bearer)) = parts
             .extract::<TypedHeader<Authorization<Bearer>>>()
             .await

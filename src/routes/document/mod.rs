@@ -219,6 +219,7 @@ async fn get_update_resource(State(state): State<AppState>, claims: Claims, Path
         scope_id: i32,
         tag_id: Option<i32>,
         tag_value: Option<String>,
+        seq_id: Option<i32>,
     }
     let res = entity::docorg::Entity::find()
         .filter(entity::docorg::Column::Id.eq(doc_id))
@@ -229,9 +230,11 @@ async fn get_update_resource(State(state): State<AppState>, claims: Claims, Path
                   .from(entity::tag::Column::Id)
                   .to(entity::docorg_tag::Column::TagId)
                   .into())
+        .join_rev(JoinType::LeftJoin, entity::docorg_sequence::Relation::Docorg.def())
         .column_as(entity::docorg_scope::Column::ScopeId, "scope_id")
         .column_as(entity::docorg_tag::Column::TagId, "tag_id")
         .column_as(entity::tag::Column::Value, "tag_value")
+        .column_as(entity::docorg_sequence::Column::SequenceId, "seq_id")
         .into_model::<Docs>()
         .all(&state.db_conn)
         .await?;
@@ -249,6 +252,7 @@ async fn get_update_resource(State(state): State<AppState>, claims: Claims, Path
         created_at: chrono::NaiveDateTime,
         updated_at: chrono::NaiveDateTime,
         tags: BTreeSet<String>,
+        seq_ids: BTreeSet<i32>,
     }
     let mut target: CompDocs = CompDocs {
         id: res[0].id,
@@ -258,12 +262,16 @@ async fn get_update_resource(State(state): State<AppState>, claims: Claims, Path
         created_at: res[0].created_at,
         updated_at: res[0].updated_at,
         tags: BTreeSet::new(),
+        seq_ids: BTreeSet::new(), 
     };
     
     for docs in res {
         target.scope_ids.insert(docs.scope_id);
         if let Some(tag_id) = docs.tag_id {
             target.tags.insert(docs.tag_value.unwrap());
+        }
+        if let Some(seq_id) = docs.seq_id {
+            target.seq_ids.insert(seq_id);
         }
     } 
 
@@ -354,6 +362,61 @@ async fn update(State(state): State<AppState>, claims: Claims, Json(payload): Js
                     let _:() = con.zadd_multiple("tags", &new_tags[..]).await?;
                 }
             }
+            /*
+             * build sequence
+             */
+
+            if let Some(seq_id) = payload.seq_id {
+                let seq = entity::sequence::Entity::find_by_id(seq_id)
+                    .filter(entity::sequence::Column::DocuserId.eq(claims.user_id))
+                    .one(&state.db_conn)
+                    .await?;
+
+                if seq.is_none() {
+                    return Err(ResourceError::SequenceNotExist.into());  
+                }
+
+                let res = entity::docorg_sequence::Entity::delete_many()
+                    .filter(entity::docorg_sequence::Column::DocorgId.eq(payload.doc_id))
+                    .exec(txn)
+                    .await?;
+
+                #[derive(FromQueryResult, Serialize, Debug)]
+                struct DocorgSeq  {
+                    last_order: i32,
+                };
+
+                let seq = entity::docorg_sequence::Entity::find()
+                    .filter(entity::docorg_sequence::Column::SequenceId.eq(seq_id))
+                    .select_only()
+                    .column_as(entity::docorg_sequence::Column::Order.max(), "last_order")
+                    .group_by(entity::docorg_sequence::Column::SequenceId)
+                    .into_model::<DocorgSeq>()
+                    .one(txn)
+                    .await?;
+
+                let seq = match seq {
+                    Some(seq) => seq,
+                    None => DocorgSeq {
+                        last_order: 0,
+                    }
+                };
+
+                let docseq = entity::docorg_sequence::ActiveModel {
+                    sequence_id: Set(seq_id),
+                    docorg_id: Set(payload.doc_id),
+                    order: Set(seq.last_order + 1),
+                };
+
+                docseq.insert(txn).await?;
+            }
+            else {
+                let res = entity::docorg_sequence::Entity::delete_many()
+                    .filter(entity::docorg_sequence::Column::DocorgId.eq(payload.doc_id))
+                    .exec(txn)
+                    .await?;
+
+            }
             
             Ok(())
         })
@@ -377,13 +440,17 @@ async fn delete(State(state): State<AppState>, claims: Claims, Json(payload): Js
 }
 
 async fn publish(State(state): State<AppState>, claims: Claims, Json(payload): Json<PublishPayload>) -> Result<impl IntoResponse, GlobalError>{
+    let mut cond = Condition::any();
+    for scope_id in payload.scope_ids {
+        cond = cond.add(entity::docorg_scope::Column::ScopeId.eq(scope_id));
+    }
 
     let res = entity::docorg_scope::Entity::find()
         .filter(
             Condition::all()
                 .add(entity::docorg_scope::Column::DocorgId.eq(payload.doc_id))
-                .add(entity::docorg_scope::Column::ScopeId.eq(payload.scope_id))
             )
+        .filter(cond)
         .join(JoinType::LeftJoin, entity::docorg_scope::Relation::Docorg.def())
         .join(JoinType::LeftJoin, entity::docorg::Relation::Docuser.def())
         .filter(entity::docuser::Column::Id.eq(claims.user_id))
@@ -405,14 +472,11 @@ async fn publish(State(state): State<AppState>, claims: Claims, Json(payload): J
         return Err(DocumentError::DocumentNotConverted.into());
     }
     let convertres = convertres.unwrap();
-    dbg!("before err check");
     match convertres.status {
         0 => return Err(DocumentError::ConvertPending.into()),
         2 => return Err(DocumentError::ConvertFailed.into()),
         _ => {}
     }
-    dbg!("after err check");
-    
     let publish_claims = DocumentClaims {
         iat: chrono::Utc::now().timestamp(),
         exp: (chrono::Utc::now() + chrono::Duration::minutes(10)).timestamp(),
