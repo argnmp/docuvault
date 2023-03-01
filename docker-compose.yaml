@@ -1,0 +1,24 @@
+version: "3.7"
+
+services:
+  app:
+    image: docuvault
+    ports:
+      - 8000:8000
+    environment:
+      DATABASE_URL: "postgres://postgres:0347@postgres/docuvault"
+      REDIS_URL: "redis://redis"
+
+  postgres:
+    image: postgres:latest
+    volumes:
+      - docuvault-data:/var/lib/postgresql/data
+    environment: 
+      POSTGRES_PASSWORD: 0347
+      POSTGRES_USER: postgres
+
+  redis:
+    image: redis:latest
+
+volumes:
+  docuvault-data:

@@ -1,11 +1,13 @@
 #![allow(unused)]
-use std::net::SocketAddr;
+use std::{net::SocketAddr, env};
 use axum::extract::FromRef;
 use bb8::Pool;
 use bb8_redis::RedisConnectionManager;
 use sea_orm::DatabaseConnection;
 use tracing;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
+
+use migration::{Migrator, MigratorTrait};
 
 
 mod entity;
@@ -45,6 +47,11 @@ async fn main() {
         .init();
 
     let db_conn    = db::postgres_connect().await;
+    /*
+     * migrate database
+     */
+    Migrator::up(&db_conn, None).await;
+
     let redis_conn = db::redis_connect().await;
     let state = AppState{
         db_conn,
@@ -52,7 +59,7 @@ async fn main() {
     };
 
     
-    let addr = SocketAddr::from(([127, 0, 0, 1], 8000));
+    let addr = SocketAddr::from(([0,0,0,0], 8000));
     
     bootstrap::bootstrap(state.clone()).await;
     

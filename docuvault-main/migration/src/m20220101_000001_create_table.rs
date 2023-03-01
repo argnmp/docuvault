@@ -465,6 +465,7 @@ enum Convert{
 mod convert {
     use sea_orm_migration::prelude::*;
     use sea_orm_migration::sea_orm::{EnumIter, DeriveActiveEnum};
+    use sea_orm_migration::sea_orm::ColumnTypeTrait;
 
     // can be html, hwp, docx ...
 #[derive(Debug, Clone, Copy, PartialEq, Eq, EnumIter, DeriveActiveEnum)]

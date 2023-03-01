@@ -5,6 +5,7 @@ use sea_orm::{Database, DatabaseConnection, ConnectOptions};
 
 pub async fn postgres_connect() -> DatabaseConnection {
     let database_url = env::var("DATABASE_URL").expect("database url is not set");
+    dbg!(&database_url);
     let mut opt = ConnectOptions::new(database_url);
     opt
         .max_connections(100)
@@ -22,7 +23,9 @@ pub async fn postgres_connect() -> DatabaseConnection {
 pub mod macros;
 pub mod schema;
 pub async fn redis_connect() -> Pool<RedisConnectionManager> {
-    let manager = RedisConnectionManager::new(env::var("REDIS_URL").expect("redis url is not set")).unwrap();
+    let redis_url = env::var("REDIS_URL").expect("redis url is not set");
+    dbg!(&redis_url);
+    let manager = RedisConnectionManager::new(redis_url).unwrap();
     let pool = bb8::Pool::builder().build(manager).await.unwrap();
     pool
 }

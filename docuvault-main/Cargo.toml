@@ -29,3 +29,4 @@ bb8 = "0.8.0"
 paste = "1.0.11"
 comrak = "0.16.0"
 macros = { path = "macros" }
+migration = { path = "migration" }
