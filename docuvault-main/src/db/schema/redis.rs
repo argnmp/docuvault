@@ -29,3 +29,10 @@ pub struct BlackList{
     pub status: bool,
 }
 
+#[redis_schema(scope="file")]
+pub struct File{
+    pub name: String,
+    pub ftype: String,
+    pub size: usize,
+    pub data: Vec<u8>,
+}

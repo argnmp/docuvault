@@ -345,18 +345,31 @@ impl MigrationTrait for Migration {
         manager
             .create_table(
                 Table::create()
-                    .table(Image::Table)
+                    .table(Docfile::Table)
                     .if_not_exists()
                     .col(
-                        ColumnDef::new(Image::Id)
+                        ColumnDef::new(Docfile::Id)
                             .integer()
                             .not_null()
                             .auto_increment()
-                            .primary_key(),
+                            .primary_key()
                     )
-                    .col(ColumnDef::new(Image::Uri).string().not_null())
-                    //0: private, 1: public, 2: pending, 3: deleted
-                    .col(ColumnDef::new(Image::Status).integer().not_null())
+                    .col(ColumnDef::new(Docfile::DocorgId).integer())
+                    .col(ColumnDef::new(Docfile::ObjectId).string().not_null())
+                    .col(ColumnDef::new(Docfile::Name).string().not_null())
+                    .col(ColumnDef::new(Docfile::Ftype).string().not_null())
+                    .col(ColumnDef::new(Docfile::Size).big_integer().not_null())
+                    .col(ColumnDef::new(Docfile::Uri).string())
+                    .col(ColumnDef::new(Docfile::IsFixed).boolean().not_null())
+                    //0: pending, 1: pass, 2: fail
+                    .col(ColumnDef::new(Docfile::Status).integer().not_null())
+                    .foreign_key(
+                        ForeignKey::create()
+                        .from(Docfile::Table, Docfile::DocorgId)
+                        .to(Docorg::Table, Docorg::Id)
+                        .on_delete(ForeignKeyAction::Cascade)
+                        .on_update(ForeignKeyAction::Cascade)
+                        )
                     .to_owned(),
             )
             .await?;
@@ -365,6 +378,9 @@ impl MigrationTrait for Migration {
     }
 
     async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
+        manager
+            .drop_table(Table::drop().table(Docfile::Table).if_exists().to_owned())
+            .await?;
         manager
             .drop_table(Table::drop().table(ScopeSequence::Table).if_exists().to_owned())
             .await?;
@@ -391,9 +407,6 @@ impl MigrationTrait for Migration {
             .await?;
         manager
             .drop_table(Table::drop().table(Tag::Table).if_exists().to_owned())
-            .await?;
-        manager
-            .drop_table(Table::drop().table(Image::Table).if_exists().to_owned())
             .await?;
         manager
             .drop_table(Table::drop().table(Docuser::Table).if_exists().to_owned())
@@ -476,7 +489,7 @@ mod convert {
         Docx = 2,
         Hwp = 3,
     }
-    // can be data it self if html or file location if hwp or docs ..
+    // can be data it self if html or Docfile location if hwp or docs ..
 #[derive(EnumIter, DeriveActiveEnum)]
 #[sea_orm(rs_type = "i32", db_type = "Integer")]
     pub enum Status {
@@ -512,10 +525,15 @@ enum ScopeSequence {
 }
 
 #[derive(Iden)]
-enum Image {
+enum Docfile {
     Table,
     Id,
+    DocorgId,
+    ObjectId,
+    Name,
+    Ftype,
+    Size,
     Uri,
-    //sync with docuorg
+    IsFixed,
     Status,
 }

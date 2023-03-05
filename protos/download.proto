@@ -1,0 +1,15 @@
+syntax = "proto3";
+package download;
+
+service Download {
+    rpc Download(DownloadRequest) returns (DownloadResponse);
+}
+message DownloadRequest {
+    string objectId = 1;
+}
+message DownloadResponse {
+    string name = 1;
+    string ftype = 2;
+    uint64 size = 3;
+    bytes data = 4;
+}

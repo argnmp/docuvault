@@ -70,6 +70,4 @@ async fn main() {
         .serve(routes::create_router(state).into_make_service_with_connect_info::<SocketAddr>())
         .await
         .unwrap();
-
-
 }

@@ -9,6 +9,7 @@ use redis::RedisError;
 
 use super::auth::error::AuthError;
 use super::document::error::DocumentError;
+use super::file::error::FileError;
 use super::resource::error::ResourceError;
 
 #[derive(Debug)]
@@ -22,6 +23,7 @@ pub enum GlobalError {
     Auth(AuthError),
     Document(DocumentError),
     Resource(ResourceError),
+    File(FileError),
 }
 impl Display for GlobalError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -41,7 +43,7 @@ impl IntoResponse for GlobalError {
             Self::Auth(error) => error.into_response(),
             Self::Document(error) => error.into_response(),
             Self::Resource(error) => error.into_response(),
-                
+            Self::File(error) => error.into_response(),
         }
     }
 }
@@ -68,5 +70,17 @@ impl From<RedisError> for GlobalError {
 impl<E> From<bb8::RunError<E>> for GlobalError {
     fn from(value: bb8::RunError<E>) -> Self {
         Self::RedisConnectionPoolError 
+    }
+}
+impl From<tonic::Status> for GlobalError {
+    fn from(value: tonic::Status) -> Self {
+        dbg!(value);
+        Self::InternalServerError
+    }
+}
+impl From<tonic::transport::Error> for GlobalError {
+    fn from(value: tonic::transport::Error) -> Self {
+        dbg!(value);
+        Self::InternalServerError
     }
 }

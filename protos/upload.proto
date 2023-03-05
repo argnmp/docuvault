@@ -1,0 +1,24 @@
+syntax = "proto3";
+package upload;
+
+service Upload {
+    rpc PreUpload (PreUploadRequest) returns (PreUploadResponse);
+    rpc Upload(UploadRequest) returns (UploadResponse);
+}
+message PreUploadRequest {
+    string name = 1;
+    string ftype = 2;
+    uint64 size = 3;
+    bytes data = 4;
+}
+message PreUploadResponse {
+    string objectId = 1;
+}
+message UploadRequest {
+    string objectId = 1;
+    int32 docId = 2;
+}
+
+message UploadResponse {
+    string msg = 1;
+}

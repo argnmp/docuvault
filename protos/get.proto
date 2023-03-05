@@ -1,0 +1,14 @@
+syntax = "proto3";
+package get;
+
+service Get {
+    rpc Get (GetRequest) returns (GetResponse);
+}
+
+message GetRequest {
+    string ObjectID = 1;
+}
+
+message GetResponse {
+    string msg = 1;
+}

@@ -32,6 +32,7 @@ pub fn redis_schema(args: TokenStream, input: TokenStream) -> TokenStream {
 
     let mut flush_method = quote!{};
     let mut del_all_method = quote!{};
+    let mut get_all_method = quote!{};
     let mut set_methods = quote!{};
     let mut get_methods = quote!{};
     for (ident, ty) in zipped {
@@ -50,6 +51,12 @@ pub fn redis_schema(args: TokenStream, input: TokenStream) -> TokenStream {
                 #del_all_method
                 let key = format!("{}:{}:{}",self.scope, self.header.key, stringify!(#ident));
                 let _: () = con.del(&key).await?;
+            };
+            get_all_method = quote!{
+                #get_all_method
+                let key = format!("{}:{}:{}",self.scope, self.header.key, stringify!(#ident));
+                let res: Option<#ty> = con.get(key).await?;
+                self.#ident = res;
             };
             let set_method = format_ident!("set_{}", ident);
             set_methods = quote!{
@@ -102,6 +109,13 @@ pub fn redis_schema(args: TokenStream, input: TokenStream) -> TokenStream {
                 let con = self.header.con.clone();
                 let mut con = con.get().await?;
                 #del_all_method
+                Ok(self)
+            }
+            pub async fn get_all(&mut self) -> Result<&mut Self, GlobalError>{
+                let con = self.header.con.clone();
+                let mut con = con.get().await?;
+                
+                #get_all_method
                 Ok(self)
             }
 
