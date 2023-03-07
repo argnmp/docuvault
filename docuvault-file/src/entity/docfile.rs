@@ -8,6 +8,7 @@ pub struct Model {
     #[sea_orm(primary_key)]
     pub id: i32,
     pub docorg_id: Option<i32>,
+    pub docuser_id: i32,
     pub object_id: String,
     pub name: String,
     pub ftype: String,
@@ -27,11 +28,25 @@ pub enum Relation {
         on_delete = "Cascade"
     )]
     Docorg,
+    #[sea_orm(
+        belongs_to = "super::docuser::Entity",
+        from = "Column::DocuserId",
+        to = "super::docuser::Column::Id",
+        on_update = "Cascade",
+        on_delete = "Cascade"
+    )]
+    Docuser,
 }
 
 impl Related<super::docorg::Entity> for Entity {
     fn to() -> RelationDef {
         Relation::Docorg.def()
+    }
+}
+
+impl Related<super::docuser::Entity> for Entity {
+    fn to() -> RelationDef {
+        Relation::Docuser.def()
     }
 }
 

@@ -24,3 +24,34 @@ pub mod conversion {
         });
     }
 }
+
+pub mod sanitize {
+    use sea_orm::{entity::*, query::*, FromQueryResult};
+
+    use crate::{AppState, entity, routes::error::GlobalError, modules::grpc::delete::{delete_client::DeleteClient, DeleteRequest}};
+    pub fn sanitize(state: AppState, user_id: i32){
+        tokio::spawn(async move {
+            let res = entity::docfile::Entity::find()
+                .filter(Condition::all()
+                        .add(entity::docfile::Column::DocuserId.eq(user_id))
+                        .add(entity::docfile::Column::IsFixed.eq(false))
+                       )
+                .column(entity::docfile::Column::ObjectId)
+                .all(&state.db_conn)
+                .await.unwrap();
+            dbg!(&res);
+
+            let mut delete_client = DeleteClient::connect("http://[::1]:8080").await.unwrap();
+            delete_client.delete(tonic::Request::new(DeleteRequest {
+                object_ids: res.iter().map(|o|o.object_id.clone()).collect::<Vec<_>>(),
+            })).await;
+            
+            for obj in res {
+                let obj = obj.into_active_model();
+                obj.delete(&state.db_conn).await;
+            }
+
+            
+        });
+    }
+}

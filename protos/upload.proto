@@ -9,7 +9,8 @@ message PreUploadRequest {
     string name = 1;
     string ftype = 2;
     uint64 size = 3;
-    bytes data = 4;
+    int32 docuserId = 4;;
+    bytes data = 5;
 }
 message PreUploadResponse {
     string objectId = 1;

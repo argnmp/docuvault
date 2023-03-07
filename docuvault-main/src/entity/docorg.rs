@@ -50,6 +50,15 @@ impl Related<super::docuser::Entity> for Entity {
     }
 }
 
+impl Related<super::sequence::Entity> for Entity {
+    fn to() -> RelationDef {
+        super::docorg_sequence::Relation::Sequence.def()
+    }
+    fn via() -> Option<RelationDef> {
+        Some(super::docorg_sequence::Relation::Docorg.def().rev())
+    }
+}
+
 impl Related<super::scope::Entity> for Entity {
     fn to() -> RelationDef {
         super::docorg_scope::Relation::Scope.def()
@@ -65,15 +74,6 @@ impl Related<super::tag::Entity> for Entity {
     }
     fn via() -> Option<RelationDef> {
         Some(super::docorg_tag::Relation::Docorg.def().rev())
-    }
-}
-
-impl Related<super::sequence::Entity> for Entity {
-    fn to() -> RelationDef {
-        super::docorg_sequence::Relation::Sequence.def()
-    }
-    fn via() -> Option<RelationDef> {
-        Some(super::docorg_sequence::Relation::Docorg.def().rev())
     }
 }
 

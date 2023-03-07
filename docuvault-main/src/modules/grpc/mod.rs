@@ -7,3 +7,6 @@ pub mod upload {
 pub mod download {
     tonic::include_proto!("download");
 }
+pub mod delete {
+    tonic::include_proto!("delete");
+}

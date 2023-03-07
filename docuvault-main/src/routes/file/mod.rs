@@ -14,11 +14,11 @@ use error::*;
 mod object;
 use object::*;
 
-use super::error::GlobalError;
+use super::{error::GlobalError, auth::object::Claims};
 
 pub fn create_router(shared_state: AppState) -> Router {
     Router::new()
-        .route("/test", get(test))
+        .route("/test", post(test))
         .route("/upload", post(upload))
         .route("/uploadfix", post(uploadfix))
         .route("/:object_id", get(download))
@@ -34,7 +34,7 @@ pub fn create_router(shared_state: AppState) -> Router {
 }
 
 
-async fn test(State(state): State<AppState>, Query(params): Query<TestParams>) -> Result<impl IntoResponse, ()> {
+async fn test(State(state): State<AppState>, claims: Claims, Query(params): Query<TestParams>) -> Result<impl IntoResponse, ()> {
     let mut client = VotingClient::connect("http://[::1]:8080").await.unwrap();      
     let request = tonic::Request::new(VotingRequest{
         url: "kim".to_string(),
@@ -46,7 +46,7 @@ async fn test(State(state): State<AppState>, Query(params): Query<TestParams>) -
 }
 
 //preupload
-async fn upload(State(state): State<AppState>, mut multipart: Multipart) -> Result<impl IntoResponse, GlobalError> {
+async fn upload(State(state): State<AppState>, claims: Claims, mut multipart: Multipart) -> Result<impl IntoResponse, GlobalError> {
     let mut upload_client = UploadClient::connect("http://[::1]:8080").await.unwrap();
     let mut object_ids = vec![];
     #[derive(Serialize)]
@@ -65,6 +65,7 @@ async fn upload(State(state): State<AppState>, mut multipart: Multipart) -> Resu
             name: name.clone(),
             ftype: ftype.clone(),
             size: size as u64,
+            docuser_id: claims.user_id,
             data,
         });
         let response = upload_client.pre_upload(request).await.unwrap();
@@ -87,7 +88,6 @@ async fn uploadfix(State(state): State<AppState>, Json(payload): Json<UploadfixP
         doc_id: payload.doc_id,
         object_id: payload.object_id,
     }).await?;
-    
     Ok(res.into_inner().msg)
 }
 

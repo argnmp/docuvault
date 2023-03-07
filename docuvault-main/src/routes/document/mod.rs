@@ -1,8 +1,9 @@
 use std::borrow::BorrowMut;
-use std::collections::BTreeSet;
+use std::collections::{BTreeSet, HashMap, HashSet};
 use std::rc::Rc;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use std::time::Duration;
+use tokio::sync::Mutex;
 
 use axum::extract::Path;
 use axum::http::{Method, header, HeaderValue};
@@ -12,11 +13,17 @@ use axum::{Router, extract::State, Json, response::IntoResponse, routing::post, 
 use comrak::ComrakOptions;
 use jsonwebtoken::{encode, Header};
 use redis::AsyncCommands;
+use regex::Regex;
 use sea_orm::{entity::*, query::*, FromQueryResult};
 use serde::Serialize;
 use tower_http::cors::{CorsLayer, Any};
 use crate::db::macros::RedisSchemaHeader;
 use crate::modules::background::conversion::{self, convert_to_html};
+use crate::modules::background::sanitize::sanitize;
+use crate::modules::grpc::delete::DeleteRequest;
+use crate::modules::grpc::delete::delete_client::DeleteClient;
+use crate::modules::grpc::upload::UploadRequest;
+use crate::modules::grpc::upload::upload_client::UploadClient;
 use crate::modules::markdown::get_title;
 use crate::modules::redis::redis_does_docuser_have_scope;
 use crate::{AppState, entity, redis_schema};
@@ -51,6 +58,7 @@ pub fn create_router(shared_state: AppState) -> Router {
         .with_state(shared_state)
 }
 async fn create(State(state): State<AppState>, claims: Claims, Json(payload): Json<CreatePayload>) -> Result<impl IntoResponse, GlobalError>{
+
     /*
      * check user has scope
      */
@@ -61,12 +69,16 @@ async fn create(State(state): State<AppState>, claims: Claims, Json(payload): Js
      */
 
     let cloned_state = state.clone();
+    let mut docres = Arc::new(Mutex::new(None));
+    let cloned_docres = docres.clone();
+
     let mut convertres = Arc::new(Mutex::new(None));
     let cloned_convertres = convertres.clone();
     let cloned_payload = payload.clone();
     
     state.db_conn.clone().transaction::<_, (), GlobalError>(|txn|{
         Box::pin(async move {
+            
             let state = cloned_state;
             let convertres = cloned_convertres;
             let payload = cloned_payload;
@@ -81,8 +93,9 @@ async fn create(State(state): State<AppState>, claims: Claims, Json(payload): Js
                 ..Default::default()
             };
             let docres = entity::docorg::Entity::insert(new_doc).exec(txn).await?;
-
-
+            *cloned_docres.lock().await = Some(docres.last_insert_id);
+            
+    
             /*
              * create pending convert to html
              */
@@ -93,7 +106,7 @@ async fn create(State(state): State<AppState>, claims: Claims, Json(payload): Js
                 status: Set(0),
                 ..Default::default()
             };
-            *convertres.lock().unwrap() =  Some(entity::convert::Entity::insert(new_convert).exec(txn).await?.last_insert_id);
+            *convertres.lock().await =  Some(entity::convert::Entity::insert(new_convert).exec(txn).await?.last_insert_id);
 
 
             /*
@@ -202,8 +215,43 @@ async fn create(State(state): State<AppState>, claims: Claims, Json(payload): Js
         })
     }).await?; 
 
-    let convert_id = (*convertres.lock().unwrap()).unwrap();
-    conversion::convert_to_html(state, convert_id, payload.raw.clone());
+    /*
+     * find object ids
+     */
+    let mut upload_client = UploadClient::connect("http://[::1]:8080").await.unwrap();
+
+    if let Some(doc_id) = *docres.lock().await {
+        let re = Regex::new(r"file/((?:\[??[^\[\]]*?\)))").unwrap();
+        let mut reiter = re.find_iter(&payload.raw[..]);
+        for m in reiter {
+            let mut chars = m.as_str().chars();
+            for _ in 0..5 {
+                chars.next();
+            }
+            chars.next_back();
+            dbg!(chars.as_str());
+            let req = tonic::Request::new(UploadRequest{
+                doc_id,
+                object_id: chars.as_str().to_owned(),
+            });
+
+            match upload_client.upload(req).await {
+                Ok(_) => {},
+                Err(e) => {dbg!(e);}
+            };
+        }
+    }
+
+    if let Some(convert_id) = *convertres.lock().await {
+        conversion::convert_to_html(state.clone(), convert_id, payload.raw.clone());
+    }
+
+    /*
+     * after fixing file in file server, clean up all temporary files
+     * this is asynchronous task
+     */
+    sanitize(state.clone(), claims.user_id); 
+
     Ok(())
 }
 
@@ -324,6 +372,10 @@ async fn update(State(state): State<AppState>, claims: Claims, Json(payload): Js
 
             let _ = entity::docorg_scope::Entity::insert_many(scope_ids).exec(txn).await?;
 
+            /*
+             * set tags
+             */
+
             if payload.tags.len()>0 {
                 let mut con = state.redis_conn.get().await?;
                 let tags: std::collections::BTreeSet<String> = con.zrange("tags", 0, -1).await?;
@@ -417,10 +469,47 @@ async fn update(State(state): State<AppState>, claims: Claims, Json(payload): Js
                     .await?;
 
             }
+
+            /*
+             * update files
+             */
+
+            let objs = entity::docfile::Entity::find()
+                .filter(entity::docfile::Column::DocorgId.eq(payload.doc_id))
+                .column_as(entity::docfile::Column::ObjectId, "object_id")
+                .into_model::<Obj>()
+                .all(&state.db_conn)
+                .await?;
+            
+            let re = Regex::new(r"file/((?:\[??[^\[\]]*?\)))").unwrap();
+            let mut reiter = re.find_iter(&payload.raw[..]);
+
+            let mut set = objs.into_iter().map(|obj|{obj.object_id}).collect::<HashSet<_>>();
+
+            let mut upload_client = UploadClient::connect("http://[::1]:8080").await.unwrap();
+            let mut delete_client = DeleteClient::connect("http://[::1]:8080").await.unwrap();
+
+            for m in reiter {
+                let mut chars = m.as_str().chars();
+                for _ in 0..5 {
+                    chars.next();
+                }
+                chars.next_back();
+
+                if !set.contains(chars.as_str()) {
+                    upload_client.upload(tonic::Request::new(UploadRequest { object_id: chars.as_str().to_owned(), doc_id: payload.doc_id })).await?; 
+                }
+                set.remove(chars.as_str());
+            }
+
+            if set.len() > 0 {
+                delete_client.delete(tonic::Request::new(DeleteRequest { object_ids: set.into_iter().collect::<Vec<_>>() })).await?;
+            }
             
             Ok(())
         })
     }).await?; 
+
     convert_to_html(state, (payload.doc_id, 0), payload.raw);
     Ok(())
 }
@@ -430,6 +519,26 @@ async fn delete(State(state): State<AppState>, claims: Claims, Json(payload): Js
     for doc_id in payload.doc_ids {
         cond = cond.add(entity::docorg::Column::Id.eq(doc_id));
     }
+    
+    #[derive(FromQueryResult)]
+    struct Obj{
+        object_id: Option<String>,
+    };
+
+    let res = entity::docorg::Entity::find()
+        .filter(entity::docorg::Column::DocuserId.eq(claims.user_id))
+        .filter(cond.clone())
+        .join_rev(JoinType::LeftJoin, entity::docfile::Relation::Docorg.def())
+        .column(entity::docfile::Column::ObjectId)
+        .into_model::<Obj>()
+        .all(&state.db_conn)
+        .await?;
+
+    let mut delete_client = DeleteClient::connect("http://[::1]:8080").await.unwrap();
+    delete_client.delete(tonic::Request::new(DeleteRequest {
+        object_ids: res.into_iter().filter(|o|o.object_id.is_some()).map(|o|o.object_id.unwrap()).collect::<Vec<_>>(),
+    })).await?;
+
     let res = entity::docorg::Entity::delete_many()
         .filter(entity::docorg::Column::DocuserId.eq(claims.user_id))
         .filter(cond)

@@ -112,3 +112,7 @@ pub struct DeletePayload {
     pub doc_ids: Vec<i32>,
 }
 
+#[derive(Debug, FromQueryResult)]
+pub struct Obj{
+    pub object_id: String,
+}

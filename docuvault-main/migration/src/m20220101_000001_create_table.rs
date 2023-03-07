@@ -355,6 +355,7 @@ impl MigrationTrait for Migration {
                             .primary_key()
                     )
                     .col(ColumnDef::new(Docfile::DocorgId).integer())
+                    .col(ColumnDef::new(Docfile::DocuserId).integer().not_null())
                     .col(ColumnDef::new(Docfile::ObjectId).string().not_null())
                     .col(ColumnDef::new(Docfile::Name).string().not_null())
                     .col(ColumnDef::new(Docfile::Ftype).string().not_null())
@@ -367,6 +368,13 @@ impl MigrationTrait for Migration {
                         ForeignKey::create()
                         .from(Docfile::Table, Docfile::DocorgId)
                         .to(Docorg::Table, Docorg::Id)
+                        .on_delete(ForeignKeyAction::Cascade)
+                        .on_update(ForeignKeyAction::Cascade)
+                        )
+                    .foreign_key(
+                        ForeignKey::create()
+                        .from(Docfile::Table, Docfile::DocuserId)
+                        .to(Docuser::Table, Docuser::Id)
                         .on_delete(ForeignKeyAction::Cascade)
                         .on_update(ForeignKeyAction::Cascade)
                         )
@@ -528,6 +536,7 @@ enum ScopeSequence {
 enum Docfile {
     Table,
     Id,
+    DocuserId,
     DocorgId,
     ObjectId,
     Name,
