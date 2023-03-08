@@ -1,7 +1,9 @@
 use tokio::fs;
 use tonic::{Request, Response, Status};
+use sea_orm::{entity::*, query::*};
+use sea_orm::{Set, ActiveModelTrait, EntityTrait};
 
-use crate::{AppState, db::schema::redis::{DocFile, RedisSchemaHeader}};
+use crate::{AppState, db::schema::redis::{DocFile, RedisSchemaHeader}, entity};
 
 use self::delete::{delete_server::Delete, DeleteRequest, DeleteResponse};
 
@@ -38,13 +40,23 @@ fn delete_callback(state: AppState, object_id: String) {
                 Err(_) => {},
             };
 
-        let file_path = format!("./{}/{}","files", object_id);
+        let file_path = format!("./{}/{}","files", &object_id);
         match fs::remove_dir_all(file_path).await {
             Ok(()) => {},
             Err(e) => {
                 dbg!(e);
             },
         };
+
+        /*
+         * delete entry in db
+         * do not care whether file alives in db
+         */
+
+        // let _ = entity::docfile::Entity::delete_many()
+            // .filter(entity::docfile::Column::ObjectId.eq(object_id))
+            // .exec(&state.db_conn)
+            // .await;
     });
 }
 

@@ -30,7 +30,7 @@ pub fn create_router(shared_state: AppState) -> Router {
                 .allow_credentials(true)
             )
         .with_state(shared_state)
-        .layer(DefaultBodyLimit::max(1024*1024*100))
+        .layer(DefaultBodyLimit::max(1024*1024*1024*1024))
 }
 
 
@@ -66,6 +66,7 @@ async fn upload(State(state): State<AppState>, claims: Claims, mut multipart: Mu
             ftype: ftype.clone(),
             size: size as u64,
             docuser_id: claims.user_id,
+            object_id: None,
             data,
         });
         let response = upload_client.pre_upload(request).await.unwrap();

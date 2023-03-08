@@ -1,0 +1,17 @@
+[package]
+name = "file-reverse-proxy"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+chrono = "0.4.23"
+dotenvy = "0.15.6"
+prost = "0.11.8"
+sha2 = "0.10.6"
+tokio = { version = "1.26.0", features = ["macros", "rt-multi-thread"] }
+tonic = "0.8.3"
+
+[build-dependencies]
+tonic-build = "0.8.4"

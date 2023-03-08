@@ -49,7 +49,9 @@ impl Download for DownloadService {
         let data = tokio::fs::read(docfile.uri.unwrap()).await.map_err(|err|GlobalError::from(err))?; 
         
         //important!!: redis schema must be changed to use reference
-        file_schema.set_name(docfile.name.clone()).set_size(docfile.size as u64).set_ftype(docfile.ftype.clone()).set_data(data.clone()).flush().await?;
+        if docfile.size < 1024*1024*50 {
+            file_schema.set_name(docfile.name.clone()).set_size(docfile.size as u64).set_ftype(docfile.ftype.clone()).set_data(data.clone()).flush().await?;
+        }
         Ok(Response::new(DownloadResponse {
             name: docfile.name,
             ftype: docfile.ftype,

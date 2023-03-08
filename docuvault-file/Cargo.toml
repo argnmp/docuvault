@@ -17,6 +17,7 @@ tonic = "0.8.3"
 sea-orm = { version = "0.11.0", features = ["sqlx-postgres", "runtime-tokio-rustls", "macros"] }
 sha2 = "0.10.6"
 chrono = "0.4.23"
+futures = "0.3.26"
 
 
 

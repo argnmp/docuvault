@@ -11,6 +11,9 @@ message PreUploadRequest {
     uint64 size = 3;
     int32 docuserId = 4;;
     bytes data = 5;
+    
+    //this is for reverse proxy
+    optional string objectId = 6;
 }
 message PreUploadResponse {
     string objectId = 1;

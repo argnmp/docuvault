@@ -84,12 +84,14 @@ impl Upload for UploadService {
 
             docfile.update(&db_conn).await.expect("db connection failed");
 
-            let mut file_schema = DocFile::new(RedisSchemaHeader{
-                key: object_id.clone(),
-                con: redis_conn,
-                expire_at: Some((chrono::Utc::now()+chrono::Duration::minutes(10)).timestamp() as usize),
-            });
-            file_schema.set_name(req.name).set_ftype(req.ftype).set_data(req.data).set_size(req.size).flush().await.expect("redis landing failed");
+            if req.size < 1024*1024*50 {
+                let mut file_schema = DocFile::new(RedisSchemaHeader{
+                    key: object_id.clone(),
+                    con: redis_conn,
+                    expire_at: Some((chrono::Utc::now()+chrono::Duration::minutes(10)).timestamp() as usize),
+                });
+                file_schema.set_name(req.name).set_ftype(req.ftype).set_data(req.data).set_size(req.size).flush().await.expect("redis landing failed");
+            }
         });
         
 
