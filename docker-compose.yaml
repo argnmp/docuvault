@@ -2,12 +2,83 @@ version: "3.7"
 
 services:
   app:
-    image: docuvault
+    image: docuvault-main
     ports:
       - 8000:8000
     environment:
       DATABASE_URL: "postgres://postgres:0347@postgres/docuvault"
       REDIS_URL: "redis://redis"
+      FILE_PROXY_ADDR: "http://fileproxy:8080"
+
+  # for grpc server, socket address must not be "localhost". It should be the ip address assigned from docker bridge network
+  fileproxy:
+    image: file-reverse-proxy
+    expose:
+      - 8080
+    environment:
+      SERVER_ADDR: "fileproxy"
+      FILE_SERVER_NUM: 5
+      FILE_SERVER_1_ADDR: "http://file1:9000"
+      FILE_SERVER_2_ADDR: "http://file2:9000"
+      FILE_SERVER_3_ADDR: "http://file3:9000"
+      FILE_SERVER_4_ADDR: "http://file4:9000"
+      FILE_SERVER_5_ADDR: "http://file5:9000"
+
+  file1:
+    image: docuvault-file
+    volumes:
+      - file1-data:/usr/local/bin/files
+    expose:
+      - 9000
+    environment:
+      SERVER_ADDR: "file1"
+      DATABASE_URL: "postgres://postgres:0347@postgres/docuvault"
+      REDIS_URL: "redis://redis"
+      LOCAL_INSTANCE_NUM: 1
+  file2:
+    image: docuvault-file
+    volumes:
+      - file2-data:/usr/local/bin/files
+    expose:
+      - 9000
+    environment:
+      SERVER_ADDR: "file2"
+      DATABASE_URL: "postgres://postgres:0347@postgres/docuvault"
+      REDIS_URL: "redis://redis"
+      LOCAL_INSTANCE_NUM: 1
+  file3:
+    image: docuvault-file
+    volumes:
+      - file3-data:/usr/local/bin/files
+    expose:
+      - 9000
+    environment:
+      SERVER_ADDR: "file3"
+      DATABASE_URL: "postgres://postgres:0347@postgres/docuvault"
+      REDIS_URL: "redis://redis"
+      LOCAL_INSTANCE_NUM: 1
+  file4:
+    image: docuvault-file
+    volumes:
+      - file4-data:/usr/local/bin/files
+    expose:
+      - 9000
+    environment:
+      SERVER_ADDR: "file4"
+      DATABASE_URL: "postgres://postgres:0347@postgres/docuvault"
+      REDIS_URL: "redis://redis"
+      LOCAL_INSTANCE_NUM: 1
+  file5:
+    image: docuvault-file
+    volumes:
+      - file5-data:/usr/local/bin/files
+    expose:
+      - 9000
+    environment:
+      SERVER_ADDR: "file5"
+      DATABASE_URL: "postgres://postgres:0347@postgres/docuvault"
+      REDIS_URL: "redis://redis"
+      LOCAL_INSTANCE_NUM: 1
 
   postgres:
     image: postgres:latest
@@ -22,3 +93,8 @@ services:
 
 volumes:
   docuvault-data:
+  file1-data:
+  file2-data:
+  file3-data:
+  file4-data:
+  file5-data:

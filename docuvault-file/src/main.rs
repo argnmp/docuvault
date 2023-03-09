@@ -1,4 +1,4 @@
-use std::env;
+use std::{env, net::ToSocketAddrs};
 
 use apis::{upload::{UploadService, upload::upload_server::UploadServer}, download::{download::download_server::DownloadServer, DownloadService}, delete::{delete::delete_server::DeleteServer, DeleteService}};
 use bb8::Pool;
@@ -34,11 +34,13 @@ async fn serve(state: AppState, port: u16) -> Result<(), Box<dyn std::error::Err
         state: state.clone(),
     };
 
+    let server_addr = env::var("SERVER_ADDR").expect("server addr is not set");
+
     Server::builder()
         .add_service(UploadServer::new(upload_service))
         .add_service(DownloadServer::new(donwload_service))
         .add_service(DeleteServer::new(delete_service))
-        .serve(format!("[::1]:{}",port).parse().unwrap())
+        .serve(format!("{}:{}",server_addr,port).to_socket_addrs().unwrap().next().unwrap())
         .await?;
 
     Ok(())
@@ -54,6 +56,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
     let servers = (0..local_instance_num).map(|i|serve(state.clone(), (9000+i) as u16)).collect::<Vec<_>>();
     join_all(servers).await;
+    dbg!("exit");
     Ok(())
 
 }

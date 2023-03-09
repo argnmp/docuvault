@@ -1,3 +1,5 @@
+use std::env;
+
 use axum::{Router, extract::{State, Query, Multipart, DefaultBodyLimit, Path, BodyStream}, routing::{get, post}, response::IntoResponse, body::Bytes, headers::ContentType, http::{header, Method, HeaderValue}, Json,};
 use sha2::{Sha256, Digest};
 use chrono::Duration;
@@ -18,7 +20,6 @@ use super::{error::GlobalError, auth::object::Claims};
 
 pub fn create_router(shared_state: AppState) -> Router {
     Router::new()
-        .route("/test", post(test))
         .route("/upload", post(upload))
         .route("/uploadfix", post(uploadfix))
         .route("/:object_id", get(download))
@@ -34,20 +35,10 @@ pub fn create_router(shared_state: AppState) -> Router {
 }
 
 
-async fn test(State(state): State<AppState>, claims: Claims, Query(params): Query<TestParams>) -> Result<impl IntoResponse, ()> {
-    let mut client = VotingClient::connect("http://[::1]:8080").await.unwrap();      
-    let request = tonic::Request::new(VotingRequest{
-        url: "kim".to_string(),
-        vote: params.vote,
-    });
-    let response = client.vote(request).await.unwrap();
-    println!("got {} from grpc server", response.into_inner().confirmation);
-    Ok(())
-}
-
 //preupload
 async fn upload(State(state): State<AppState>, claims: Claims, mut multipart: Multipart) -> Result<impl IntoResponse, GlobalError> {
-    let mut upload_client = UploadClient::connect("http://[::1]:8080").await.unwrap();
+    let file_proxy_addr = env::var("FILE_PROXY_ADDR").expect("file proxy addr is not set.");
+    let mut upload_client = UploadClient::connect(file_proxy_addr).await.unwrap();
     let mut object_ids = vec![];
     #[derive(Serialize)]
     struct Resource {
@@ -84,7 +75,8 @@ struct UploadfixPayload{
     object_id: String,
 }
 async fn uploadfix(State(state): State<AppState>, Json(payload): Json<UploadfixPayload>) -> Result<impl IntoResponse, GlobalError> {
-    let mut upload_client = UploadClient::connect("http://[::1]:8080").await.unwrap();
+    let file_proxy_addr = env::var("FILE_PROXY_ADDR").expect("file proxy addr is not set.");
+    let mut upload_client = UploadClient::connect(file_proxy_addr).await.unwrap();
     let res = upload_client.upload(UploadRequest {
         doc_id: payload.doc_id,
         object_id: payload.object_id,
@@ -93,7 +85,8 @@ async fn uploadfix(State(state): State<AppState>, Json(payload): Json<UploadfixP
 }
 
 async fn download(State(state): State<AppState>, Path(object_id): Path<String>) -> Result<impl IntoResponse, GlobalError>{
-    let mut client = DownloadClient::connect("http://[::1]:8080").await?;
+    let file_proxy_addr = env::var("FILE_PROXY_ADDR").expect("file proxy addr is not set.");
+    let mut client = DownloadClient::connect(file_proxy_addr).await?;
     
     let req = tonic::Request::new(DownloadRequest{
         object_id: object_id.clone(),

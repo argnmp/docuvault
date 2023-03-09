@@ -22,7 +22,7 @@ mod modules;
 #[derive(Clone, Debug)]
 pub struct AppState {
     db_conn: DatabaseConnection,
-    redis_conn: Pool<RedisConnectionManager>
+    redis_conn: Pool<RedisConnectionManager>,
 }
 impl FromRef<AppState> for DatabaseConnection {
     fn from_ref(input: &AppState) -> Self {

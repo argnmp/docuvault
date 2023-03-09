@@ -1,7 +1,9 @@
+use std::env;
+
 use axum::{Router, response::{Html, IntoResponse}, extract::State, routing::get};
 use tower_http::trace::TraceLayer;
 
-use crate::AppState;
+use crate::{AppState, modules::grpc::upload::upload_client::UploadClient};
 
 pub mod error;
 pub mod auth;
@@ -21,5 +23,8 @@ pub fn create_router(shared_state: AppState) -> Router {
 }
 
 async fn index(State(state): State<AppState>) -> impl IntoResponse {
+    let file_proxy_addr = env::var("FILE_PROXY_ADDR").expect("file proxy addr is not set.");
+    dbg!(&file_proxy_addr);
+    let mut upload_client = UploadClient::connect(file_proxy_addr).await.unwrap();
     Html("welcome to docuvault")
 }

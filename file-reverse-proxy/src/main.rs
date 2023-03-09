@@ -1,4 +1,4 @@
-use std::{env, sync::Arc};
+use std::{env, sync::Arc, net::ToSocketAddrs};
 use tokio::sync::Mutex;
 
 use forward::{upload::{upload::upload_server::UploadServer, UploadService}, download::{DownloadService, download::download_server::DownloadServer}, delete::{DeleteService, download::delete_server::DeleteServer}};
@@ -17,7 +17,9 @@ pub struct AppState {
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     dotenvy::dotenv().ok();
-    let address = "[::1]:8080".parse().unwrap();
+    let server_addr = env::var("SERVER_ADDR").expect("server addr is not set");
+
+    let address = format!("{}:8080",server_addr).to_socket_addrs().unwrap().next().unwrap();
 
     let file_server_num = env::var("FILE_SERVER_NUM").expect("file server number is not set").parse::<i32>().expect("file server number is not an integer number");
     let mut file_server_addr = vec![];

@@ -1,5 +1,6 @@
 use std::borrow::BorrowMut;
 use std::collections::{BTreeSet, HashMap, HashSet};
+use std::env;
 use std::rc::Rc;
 use std::sync::Arc;
 use std::time::Duration;
@@ -56,6 +57,12 @@ pub fn create_router(shared_state: AppState) -> Router {
                 .allow_credentials(true)
             )
         .with_state(shared_state)
+}
+async fn test(State(state): State<AppState>, claims: Claims) -> Result<impl IntoResponse, GlobalError> {
+    let file_proxy_addr = env::var("FILE_PROXY_ADDR").expect("file proxy addr is not set.");
+    dbg!(&file_proxy_addr);
+    let mut upload_client = UploadClient::connect(file_proxy_addr).await.unwrap();
+    Ok(())
 }
 async fn create(State(state): State<AppState>, claims: Claims, Json(payload): Json<CreatePayload>) -> Result<impl IntoResponse, GlobalError>{
 
@@ -218,7 +225,8 @@ async fn create(State(state): State<AppState>, claims: Claims, Json(payload): Js
     /*
      * find object ids
      */
-    let mut upload_client = UploadClient::connect("http://[::1]:8080").await.unwrap();
+    let file_proxy_addr = env::var("FILE_PROXY_ADDR").expect("file proxy addr is not set.");
+    let mut upload_client = UploadClient::connect(file_proxy_addr).await.unwrap();
 
     if let Some(doc_id) = *docres.lock().await {
         let re = Regex::new(r"file/((?:\[??[^\[\]]*?\)))").unwrap();
@@ -486,8 +494,9 @@ async fn update(State(state): State<AppState>, claims: Claims, Json(payload): Js
 
             let mut set = objs.into_iter().map(|obj|{obj.object_id}).collect::<HashSet<_>>();
 
-            let mut upload_client = UploadClient::connect("http://[::1]:8080").await.unwrap();
-            let mut delete_client = DeleteClient::connect("http://[::1]:8080").await.unwrap();
+            let file_proxy_addr = env::var("FILE_PROXY_ADDR").expect("file proxy addr is not set.");
+            let mut upload_client = UploadClient::connect(file_proxy_addr.clone()).await.unwrap();
+            let mut delete_client = DeleteClient::connect(file_proxy_addr).await.unwrap();
 
             for m in reiter {
                 let mut chars = m.as_str().chars();
@@ -534,7 +543,8 @@ async fn delete(State(state): State<AppState>, claims: Claims, Json(payload): Js
         .all(&state.db_conn)
         .await?;
 
-    let mut delete_client = DeleteClient::connect("http://[::1]:8080").await.unwrap();
+    let file_proxy_addr = env::var("FILE_PROXY_ADDR").expect("file proxy addr is not set.");
+    let mut delete_client = DeleteClient::connect(file_proxy_addr).await.unwrap();
     delete_client.delete(tonic::Request::new(DeleteRequest {
         object_ids: res.into_iter().filter(|o|o.object_id.is_some()).map(|o|o.object_id.unwrap()).collect::<Vec<_>>(),
     })).await?;
