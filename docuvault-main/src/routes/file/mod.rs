@@ -93,5 +93,5 @@ async fn download(State(state): State<AppState>, Path(object_id): Path<String>) 
     });
     let res = client.download(req).await?.into_inner();
     
-    Ok(([(header::CONTENT_TYPE, res.ftype)], res.data))
+    Ok(([(header::CONTENT_TYPE, res.ftype), (header::CONTENT_DISPOSITION, format!("attachment; filename=\"{}\"", res.name))], res.data))
 }

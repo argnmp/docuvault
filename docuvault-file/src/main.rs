@@ -36,12 +36,16 @@ async fn serve(state: AppState, port: u16) -> Result<(), Box<dyn std::error::Err
 
     let server_addr = env::var("SERVER_ADDR").expect("server addr is not set");
 
+    let server_addr = format!("{}:{}",server_addr,port).to_socket_addrs().unwrap().next().unwrap();
+    dbg!(&server_addr);
     Server::builder()
         .add_service(UploadServer::new(upload_service))
         .add_service(DownloadServer::new(donwload_service))
         .add_service(DeleteServer::new(delete_service))
-        .serve(format!("{}:{}",server_addr,port).to_socket_addrs().unwrap().next().unwrap())
+        .serve(server_addr)
         .await?;
+
+
 
     Ok(())
 }

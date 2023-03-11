@@ -1,9 +1,10 @@
 #![allow(unused)]
-use std::{net::SocketAddr, env};
+use std::{net::SocketAddr, env, sync::Arc};
 use axum::extract::FromRef;
 use bb8::Pool;
 use bb8_redis::RedisConnectionManager;
 use sea_orm::DatabaseConnection;
+use tokio::sync::Mutex;
 use tracing;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
@@ -23,6 +24,7 @@ mod modules;
 pub struct AppState {
     db_conn: DatabaseConnection,
     redis_conn: Pool<RedisConnectionManager>,
+    file_proxy_addr: Arc<Mutex<String>>,
 }
 impl FromRef<AppState> for DatabaseConnection {
     fn from_ref(input: &AppState) -> Self {
@@ -52,10 +54,12 @@ async fn main() {
      */
     Migrator::up(&db_conn, None).await;
 
+    let file_proxy_addr = env::var("FILE_PROXY_ADDR").expect("file proxy addr is not set.");
     let redis_conn = db::redis_connect().await;
     let state = AppState{
         db_conn,
-        redis_conn 
+        redis_conn,
+        file_proxy_addr: Arc::new(Mutex::new(file_proxy_addr)), 
     };
 
     

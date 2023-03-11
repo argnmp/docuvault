@@ -34,6 +34,7 @@ tonic = "0.8.3"
 prost = "0.11.8"
 futures = "0.3.26"
 futures-util = "0.3.26"
+docx = "1.1.2"
 
 [build-dependencies]
 tonic-build = "0.8.4"

@@ -116,3 +116,10 @@ pub struct DeletePayload {
 pub struct Obj{
     pub object_id: String,
 }
+
+#[derive(Debug, Deserialize)]
+pub struct ConvertPayload {
+    pub doc_id: i32,
+    pub c_type: i32,
+}
+

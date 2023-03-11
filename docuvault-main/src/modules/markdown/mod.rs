@@ -31,16 +31,3 @@ fn collect_text<'a>(node: &'a AstNode<'a>, output: &mut Vec<u8>) {
         }
     }
 }
-
-#[tokio::test]
-async fn get_title_test(){
-    let document = r"
-    ## hello there?
-# 안녕하세요 반갑습니다.
-hello there`
-        ###longtimenosee
-        
-    ";
-    let res = get_title(document);
-    dbg!(res);
-}

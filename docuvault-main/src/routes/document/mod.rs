@@ -19,7 +19,7 @@ use sea_orm::{entity::*, query::*, FromQueryResult};
 use serde::Serialize;
 use tower_http::cors::{CorsLayer, Any};
 use crate::db::macros::RedisSchemaHeader;
-use crate::modules::background::conversion::{self, convert_to_html};
+use crate::modules::background::conversion::{self, convert_to_html, extension};
 use crate::modules::background::sanitize::sanitize;
 use crate::modules::grpc::delete::DeleteRequest;
 use crate::modules::grpc::delete::delete_client::DeleteClient;
@@ -43,6 +43,7 @@ use super::resource::error::ResourceError;
 
 pub fn create_router(shared_state: AppState) -> Router {
     Router::new()
+        .route("/convert", post(convert))
         .route("/get_update_resource/:doc_id", post(get_update_resource))
         .route("/delete", post(delete))
         .route("/update", post(update))
@@ -57,12 +58,6 @@ pub fn create_router(shared_state: AppState) -> Router {
                 .allow_credentials(true)
             )
         .with_state(shared_state)
-}
-async fn test(State(state): State<AppState>, claims: Claims) -> Result<impl IntoResponse, GlobalError> {
-    let file_proxy_addr = env::var("FILE_PROXY_ADDR").expect("file proxy addr is not set.");
-    dbg!(&file_proxy_addr);
-    let mut upload_client = UploadClient::connect(file_proxy_addr).await.unwrap();
-    Ok(())
 }
 async fn create(State(state): State<AppState>, claims: Claims, Json(payload): Json<CreatePayload>) -> Result<impl IntoResponse, GlobalError>{
 
@@ -627,14 +622,15 @@ async fn get_document(State(state): State<AppState>, Json(payload): Json<GetDocu
         tag_id: Option<i32>,
         tag_value: Option<String>,
     }
-    let res = entity::docorg::Entity::find()
-        .filter(entity::docorg::Column::Id.eq(claims.doc_id))
+    let res = entity::docorg::Entity::find_by_id(claims.doc_id)
+        //.filter(entity::docorg::Column::Id.eq(claims.doc_id))
         .join_rev(JoinType::LeftJoin, entity::docorg_tag::Relation::Docorg.def())
         .join_rev(JoinType::LeftJoin, entity::tag::Entity::belongs_to(entity::docorg_tag::Entity)
                   .from(entity::tag::Column::Id)
                   .to(entity::docorg_tag::Column::TagId)
                   .into())
         .join_rev(JoinType::LeftJoin, entity::convert::Relation::Docorg.def())
+        .filter(entity::convert::Column::CType.eq(0))
         .column_as(entity::docorg_tag::Column::TagId, "tag_id")
         .column_as(entity::tag::Column::Value, "tag_value")
         .column_as(entity::convert::Column::Data, "data")
@@ -645,6 +641,26 @@ async fn get_document(State(state): State<AppState>, Json(payload): Json<GetDocu
     if res.len() == 0 {
         return Err(DocumentError::DocumentNotExist.into());
     }
+
+    #[derive(Serialize, Debug)]
+    struct Convert {
+        c_type: i32,
+        extension: String,
+        object_id: String,
+    }
+    let convertres = entity::convert::Entity::find()
+        .filter(entity::convert::Column::DocorgId.eq(claims.doc_id))
+        .all(&state.db_conn)
+        .await?;
+    
+    let converts = convertres.into_iter().filter(|m| m.c_type != 0 && m.status == 1).map(|m|{
+        Convert {
+            c_type: m.c_type,
+            extension: extension(m.c_type),
+            object_id: m.data.unwrap(),
+        }
+    }).collect::<Vec<_>>(); 
+        
     #[derive(Serialize, Debug)]
     #[derive(PartialEq, Eq, PartialOrd, Ord)]
     struct Tag {
@@ -662,6 +678,7 @@ async fn get_document(State(state): State<AppState>, Json(payload): Json<GetDocu
         created_at: chrono::NaiveDateTime,
         updated_at: chrono::NaiveDateTime,
         tags: BTreeSet<Tag>,
+        convert: Vec<Convert>
     }
     let mut ret = CompDocs{
         id: res[0].id,
@@ -672,6 +689,7 @@ async fn get_document(State(state): State<AppState>, Json(payload): Json<GetDocu
         created_at: res[0].created_at,
         updated_at: res[0].updated_at,
         tags: BTreeSet::new(),
+        convert: converts,
     };
     for docs in res {
         match docs.tag_id {
@@ -690,4 +708,45 @@ async fn get_document(State(state): State<AppState>, Json(payload): Json<GetDocu
         return Err(DocumentError::PrivateDocument.into());
     }
     Ok(Json(ret))
+}
+async fn convert(State(state): State<AppState>, claims: Claims, Json(payload): Json<ConvertPayload>) -> Result<impl IntoResponse, GlobalError>{
+    // only available for the document owner
+    
+    let docres = entity::docorg::Entity::find_by_id(payload.doc_id)
+        .filter(entity::docorg::Column::DocuserId.eq(claims.user_id))
+        .one(&state.db_conn)
+        .await?;
+
+    let docres = match docres {
+        Some(docres) => docres,
+        None => return Err(DocumentError::DocumentNotExist.into())
+    };
+
+    match payload.c_type {
+        0 | 1 | 2 => {
+            let convertres = entity::convert::Entity::find_by_id((payload.doc_id, payload.c_type))
+                .one(&state.db_conn)
+                .await?;
+            if convertres.is_some() {
+                return Err(DocumentError::ConvertExists.into());
+            }
+            let new_convert = entity::convert::ActiveModel {
+                docorg_id: Set(payload.doc_id),
+                c_type: Set(payload.c_type),
+                status: Set(0),
+                ..Default::default()
+            };
+            let convertres = entity::convert::Entity::insert(new_convert).exec(&state.db_conn).await?;
+            match payload.c_type {
+                0 | 1 | 2 => {conversion::convert(state.clone(), convertres.last_insert_id, payload.c_type).await;},
+                _ => {},
+            };
+            Ok(())
+
+        },
+        _ => {
+            Err(DocumentError::NoMatchingConvertType.into())
+        }
+    }
+    
 }

@@ -28,6 +28,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         file_server_addr.push(addr);
     }
 
+    dbg!(&file_server_addr);
+
     let state = AppState {
         file_server_num,
         file_server_addr: Arc::new(Mutex::new(file_server_addr)),

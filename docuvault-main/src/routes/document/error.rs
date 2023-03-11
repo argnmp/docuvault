@@ -14,6 +14,8 @@ pub enum DocumentError {
     DocumentNotConverted, 
     ConvertPending,
     ConvertFailed,
+    NoMatchingConvertType,
+    ConvertExists,
 }
 impl IntoResponse for DocumentError {
     fn into_response(self) -> axum::response::Response {
@@ -28,6 +30,8 @@ impl IntoResponse for DocumentError {
             Self::DocumentNotConverted => (StatusCode::NO_CONTENT, "target type is not converted"),
             Self::ConvertPending => (StatusCode::BAD_REQUEST, "target content type conversion is in process"),
             Self::ConvertFailed => (StatusCode::BAD_REQUEST, "target content type conversion failed"),
+            Self::NoMatchingConvertType => (StatusCode::BAD_REQUEST, "target content type does not supported"),
+            Self::ConvertExists => (StatusCode::BAD_REQUEST, "target convert exists"),
         };
         res.into_response()
     }
