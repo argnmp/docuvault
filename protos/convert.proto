@@ -1,0 +1,27 @@
+syntax = "proto3";
+package convert;
+
+service Convert {
+    rpc Convert (ConvertRequest) returns (ConvertResponse);
+}
+message ConvertRequest {
+    string title = 1;
+    int32 docId = 2;
+    int32 docuserId = 3;
+    string data = 4;
+
+    enum CType {
+        Html = 0;
+        Html5 = 1;
+        Plain = 2; 
+        Docx = 3;
+        Pdf = 4;
+        Epub3 = 5;
+        Json = 6;
+    }
+    CType cType = 5;
+}
+
+message ConvertResponse {
+    string msg = 1;
+}

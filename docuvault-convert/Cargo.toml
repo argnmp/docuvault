@@ -1,0 +1,21 @@
+[package]
+name = "docuvault-convert"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+macros = { path="./macros" }
+bb8 = "0.8.0"
+bb8-redis = "0.12.0"
+dotenvy = "0.15.6"
+pandoc = "0.8.10"
+prost = "0.11.8"
+redis = "0.22.3"
+sea-orm = { version = "0.11.0", features = ["sqlx-postgres", "runtime-tokio-rustls", "macros"] }
+tokio = { version = "1.26.0", features = ["rt-multi-thread", "fs"] }
+tonic = "0.8.3"
+
+[build-dependencies]
+tonic-build = "0.8.4"

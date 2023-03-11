@@ -45,8 +45,6 @@ async fn serve(state: AppState, port: u16) -> Result<(), Box<dyn std::error::Err
         .serve(server_addr)
         .await?;
 
-
-
     Ok(())
 }
 

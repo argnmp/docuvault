@@ -9,15 +9,19 @@ pub mod conversion {
 
     use crate::{AppState, entity, modules::grpc::upload::{upload_client::UploadClient, UploadRequest, PreUploadRequest}};
 
-    pub fn extension(c_type: i32) -> String {
+    pub fn extension<'a>(c_type: i32)->&'a str{
         match c_type {
-            0 => "html".to_owned(),
-            1 => "txt".to_owned(),
-            2 => "docx".to_owned(),
-            3 => "pdf".to_owned(),
-            _ => "".to_owned(),
-        } 
+            0 => "html",
+            1 => "html",
+            2 => "txt",
+            3 => "docx",
+            4 => "pdf",
+            5 => "epub",
+            6 => "json",
+            _ => "",
+        }
     }
+
 
     pub fn convert_to_html(state: AppState, convert_id: (i32, i32), target: String){
         tokio::spawn(async move {
@@ -99,8 +103,8 @@ pub mod conversion {
                 None => return (),
             };
             let (data, extension, ftype) = match c_type {
-                1 => (parse_to_txt(docorg.raw), "txt", "text/plain"),
-                2 => (parse_to_docx(docorg.raw), "docx", "application/vnd.openxmlformats-officedocument.wordprocessingml.document"),
+                2 => (parse_to_txt(docorg.raw), "txt", "text/plain"),
+                3 => (parse_to_docx(docorg.raw), "docx", "application/vnd.openxmlformats-officedocument.wordprocessingml.document"),
                 _ => panic!("not supported c_type"),
             };
             dbg!(&data);

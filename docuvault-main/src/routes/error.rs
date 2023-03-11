@@ -20,6 +20,7 @@ pub enum GlobalError {
     DbTrxError,
     RedisError,
     RedisConnectionPoolError,
+    GrpcError(String),
     Auth(AuthError),
     Document(DocumentError),
     Resource(ResourceError),
@@ -40,6 +41,7 @@ impl IntoResponse for GlobalError {
             Self::DbTrxError => (StatusCode::INTERNAL_SERVER_ERROR, "Db transaction error").into_response(),
             Self::RedisError => (StatusCode::INTERNAL_SERVER_ERROR, "Redis error").into_response(),
             Self::RedisConnectionPoolError => (StatusCode::INTERNAL_SERVER_ERROR, "Redis bb8 connection pool error").into_response(),
+            Self::GrpcError(msg) => (StatusCode::INTERNAL_SERVER_ERROR, msg).into_response(),
             Self::Auth(error) => error.into_response(),
             Self::Document(error) => error.into_response(),
             Self::Resource(error) => error.into_response(),
@@ -74,8 +76,8 @@ impl<E> From<bb8::RunError<E>> for GlobalError {
 }
 impl From<tonic::Status> for GlobalError {
     fn from(value: tonic::Status) -> Self {
-        dbg!(value);
-        Self::InternalServerError
+        dbg!(&value);
+        Self::GrpcError(value.message().to_owned())
     }
 }
 impl From<tonic::transport::Error> for GlobalError {

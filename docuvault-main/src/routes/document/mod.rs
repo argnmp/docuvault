@@ -17,10 +17,13 @@ use redis::AsyncCommands;
 use regex::Regex;
 use sea_orm::{entity::*, query::*, FromQueryResult};
 use serde::Serialize;
+use tonic::Request;
 use tower_http::cors::{CorsLayer, Any};
 use crate::db::macros::RedisSchemaHeader;
 use crate::modules::background::conversion::{self, convert_to_html, extension};
 use crate::modules::background::sanitize::sanitize;
+use crate::modules::grpc::convert::ConvertRequest;
+use crate::modules::grpc::convert::convert_client::ConvertClient;
 use crate::modules::grpc::delete::DeleteRequest;
 use crate::modules::grpc::delete::delete_client::DeleteClient;
 use crate::modules::grpc::upload::UploadRequest;
@@ -656,7 +659,7 @@ async fn get_document(State(state): State<AppState>, Json(payload): Json<GetDocu
     let converts = convertres.into_iter().filter(|m| m.c_type != 0 && m.status == 1).map(|m|{
         Convert {
             c_type: m.c_type,
-            extension: extension(m.c_type),
+            extension: extension(m.c_type).to_owned(),
             object_id: m.data.unwrap(),
         }
     }).collect::<Vec<_>>(); 
@@ -723,26 +726,43 @@ async fn convert(State(state): State<AppState>, claims: Claims, Json(payload): J
     };
 
     match payload.c_type {
-        0 | 1 | 2 => {
+        // 0 | 1 | 2 => {
+            // let convertres = entity::convert::Entity::find_by_id((payload.doc_id, payload.c_type))
+                // .one(&state.db_conn)
+                // .await?;
+            // if convertres.is_some() {
+                // return Err(DocumentError::ConvertExists.into());
+            // }
+            // let new_convert = entity::convert::ActiveModel {
+                // docorg_id: Set(payload.doc_id),
+                // c_type: Set(payload.c_type),
+                // status: Set(0),
+                // ..Default::default()
+            // };
+            // let convertres = entity::convert::Entity::insert(new_convert).exec(&state.db_conn).await?;
+            // match payload.c_type { 0 | 1 | 2 => {conversion::convert(state.clone(), convertres.last_insert_id, payload.c_type).await;},
+                // _ => {},
+            // };
+            // Ok(())
+//
+        // },
+        0..=6 => {
             let convertres = entity::convert::Entity::find_by_id((payload.doc_id, payload.c_type))
                 .one(&state.db_conn)
                 .await?;
             if convertres.is_some() {
-                return Err(DocumentError::ConvertExists.into());
+                return Ok(());
             }
-            let new_convert = entity::convert::ActiveModel {
-                docorg_id: Set(payload.doc_id),
-                c_type: Set(payload.c_type),
-                status: Set(0),
-                ..Default::default()
-            };
-            let convertres = entity::convert::Entity::insert(new_convert).exec(&state.db_conn).await?;
-            match payload.c_type {
-                0 | 1 | 2 => {conversion::convert(state.clone(), convertres.last_insert_id, payload.c_type).await;},
-                _ => {},
-            };
+            let convert_addr = env::var("CONVERT_ADDR").expect("convert addr is not set.");
+            let mut convert_client = ConvertClient::connect(convert_addr).await?;
+            convert_client.convert(Request::new(ConvertRequest{
+                title: docres.title,
+                doc_id: payload.doc_id,
+                docuser_id: claims.user_id,
+                data: docres.raw,
+                c_type: payload.c_type,
+            })).await?;
             Ok(())
-
         },
         _ => {
             Err(DocumentError::NoMatchingConvertType.into())

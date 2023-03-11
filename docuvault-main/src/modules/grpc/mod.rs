@@ -10,3 +10,6 @@ pub mod download {
 pub mod delete {
     tonic::include_proto!("delete");
 }
+pub mod convert {
+    tonic::include_proto!("convert");
+}
