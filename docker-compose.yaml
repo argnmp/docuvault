@@ -9,6 +9,20 @@ services:
       DATABASE_URL: "postgres://postgres:0347@postgres/docuvault"
       REDIS_URL: "redis://redis"
       FILE_PROXY_ADDR: "http://fileproxy:8080"
+      CONVERT_ADDR: "http://convert:7000"
+      ACCESS_JWT_SECRET: "twentyonepilots"
+      REFRESH_JWT_SECRET: "radiohead"
+      PUBLISH_JWT_SECRET: "haskell"
+
+  convert:
+    image: docuvault-convert 
+    expose:
+      - 7000
+    environment:
+      SERVER_ADDR: "convert"
+      DATABASE_URL: "postgres://postgres:0347@postgres/docuvault"
+      REDIS_URL: "redis://redis"
+      FILE_PROXY_ADDR: "http://fileproxy:8080"
 
   # for grpc server, socket address must not be "localhost". It should be the ip address assigned from docker bridge network
   fileproxy:

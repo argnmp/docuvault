@@ -260,7 +260,6 @@ async fn create(State(state): State<AppState>, claims: Claims, Json(payload): Js
 
     Ok(())
 }
-
 async fn get_update_resource(State(state): State<AppState>, claims: Claims, Path(doc_id): Path<i32>) -> Result<impl IntoResponse, GlobalError>{
     #[derive(FromQueryResult, Serialize, Debug)]
     struct Docs {
@@ -331,7 +330,6 @@ async fn get_update_resource(State(state): State<AppState>, claims: Claims, Path
 
     Ok(Json(target))
 }
-
 async fn update(State(state): State<AppState>, claims: Claims, Json(payload): Json<UpdatePayload>) -> Result<impl IntoResponse, GlobalError>{
 
     redis_does_docuser_have_scope(state.clone(), &payload.scope_ids[..], claims.user_id).await?;
@@ -509,8 +507,22 @@ async fn update(State(state): State<AppState>, claims: Claims, Json(payload): Js
                 set.remove(chars.as_str());
             }
 
+            let set = set.into_iter().collect::<Vec<_>>();
+
             if set.len() > 0 {
-                delete_client.delete(tonic::Request::new(DeleteRequest { object_ids: set.into_iter().collect::<Vec<_>>() })).await?;
+                delete_client.delete(tonic::Request::new(DeleteRequest { object_ids: set.clone() })).await?;
+            }
+
+            for obj in set{
+                let res = entity::docfile::Entity::delete_many()
+                    .filter(entity::docfile::Column::ObjectId.eq(&obj))
+                    .exec(&state.db_conn)
+                    .await?;
+
+                let res = entity::convert::Entity::delete_many()
+                    .filter(entity::convert::Column::Data.eq(&obj))
+                    .exec(&state.db_conn)
+                    .await?;
             }
             
             Ok(())
@@ -520,7 +532,6 @@ async fn update(State(state): State<AppState>, claims: Claims, Json(payload): Js
     convert_to_html(state, (payload.doc_id, 0), payload.raw);
     Ok(())
 }
-
 async fn delete(State(state): State<AppState>, claims: Claims, Json(payload): Json<DeletePayload>) -> Result<impl IntoResponse, GlobalError>{
     let mut cond =  Condition::any();
     for doc_id in payload.doc_ids {
@@ -555,7 +566,6 @@ async fn delete(State(state): State<AppState>, claims: Claims, Json(payload): Js
 
     Ok(())
 }
-
 async fn publish(State(state): State<AppState>, claims: Claims, Json(payload): Json<PublishPayload>) -> Result<impl IntoResponse, GlobalError>{
     let mut cond = Condition::any();
     for scope_id in payload.scope_ids {
@@ -609,7 +619,6 @@ async fn publish(State(state): State<AppState>, claims: Claims, Json(payload): J
         publish_token,
     }))
 }
-
 async fn get_document(State(state): State<AppState>, Json(payload): Json<GetDocumentPayload>) -> Result<impl IntoResponse, GlobalError> {
     let claims = get_claims(payload)?;
 
@@ -712,6 +721,7 @@ async fn get_document(State(state): State<AppState>, Json(payload): Json<GetDocu
     }
     Ok(Json(ret))
 }
+
 async fn convert(State(state): State<AppState>, claims: Claims, Json(payload): Json<ConvertPayload>) -> Result<impl IntoResponse, GlobalError>{
     // only available for the document owner
     
