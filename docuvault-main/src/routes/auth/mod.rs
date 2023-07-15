@@ -1,4 +1,4 @@
-use std::{net::SocketAddr, str::FromStr};
+use std::{net::SocketAddr, str::FromStr, sync::Arc};
 
 use axum::{Router, routing::{get, post}, response::{Html, IntoResponse}, extract::{State, ConnectInfo}, Json, middleware::{from_extractor, from_extractor_with_state}, TypedHeader, headers::{Authorization, authorization::Bearer}, http::{Method, header}};
 use jsonwebtoken::{encode, Header, decode, Validation, errors::ErrorKind};
@@ -9,7 +9,7 @@ use redis::{AsyncCommands};
 use tower_http::cors::{CorsLayer, Any};
 
 
-use crate::{redis_schema, db::{schema::redis::{TokenPair, RedisSchemaHeader, Refresh, BlackList}}};
+use crate::{redis_schema, db::{schema::redis::{TokenPair, RedisSchemaHeader, Refresh, BlackList}}, common::object::ServiceState};
 use crate::AppState;
 use crate::entity;
 use crate::middleware::guard::Authenticate;
@@ -18,6 +18,8 @@ pub mod error;
 use error::*;
 pub mod object;
 use object::*;
+pub mod service;
+use service::*;
 
 use self::module::password::verify_password;
 
@@ -27,11 +29,15 @@ mod module;
 
 
 pub fn create_router(shared_state: AppState) -> Router {
+    let service_state: ServiceState<AuthService> = ServiceState{
+        global_state: shared_state.clone(),
+        service: Arc::new(AuthService::new(shared_state.clone())),
+    };
+    
     Router::new()
         .route("/protected", get(protected))
         .route("/disconnect", get(disconnect))
-        .route_layer(from_extractor_with_state::<Authenticate, AppState>(shared_state.clone()))
-        .route("/test", get(test))
+        .route_layer(from_extractor_with_state::<Authenticate, ServiceState<AuthService>>(service_state.clone()))
         .route("/", get(index))
         .route("/register", post(register))
         .route("/issue", post(issue))
@@ -42,19 +48,23 @@ pub fn create_router(shared_state: AppState) -> Router {
                 .allow_methods([Method::POST])
                 .allow_headers([header::CONTENT_TYPE])
             )
-        .with_state(shared_state)
+        .route("/test", get(test))
+        .with_state(service_state)
+    
 }
-async fn test(State(state): State<AppState>) -> impl IntoResponse {
+async fn test(State(state): State<ServiceState<AuthService>>) -> impl IntoResponse {
+    let qr = state.service.find_user("kim@kim.com").await.unwrap();
+    Html("hello this is state")
 }
 
 async fn protected() -> impl IntoResponse {
     Json(json!({"msg": "you've got access"}))
 }
-async fn index(State(state): State<AppState>) -> impl IntoResponse {
+async fn index(State(state): State<ServiceState<AuthService>>) -> impl IntoResponse {
     Html("welcome to auth index")
 }
 
-async fn register(State(state): State<AppState>, Json(payload): Json<RegisterPayload>) -> Result<impl IntoResponse, GlobalError> {
+async fn register(State(state): State<ServiceState<AuthService>>, Json(payload): Json<RegisterPayload>) -> Result<impl IntoResponse, GlobalError> {
     if payload.email.is_empty() || payload.password.is_empty() || payload.nickname.is_empty() {
         return Err(AuthError::MissingCredential.into());
     }
@@ -63,13 +73,10 @@ async fn register(State(state): State<AppState>, Json(payload): Json<RegisterPay
         return Err(AuthError::InvalidCredential.into());  
     }
 
-    let qr = entity::docuser::Entity::find()
-        .filter(entity::docuser::Column::Email.eq(payload.email.clone()))
-        .all(&state.db_conn)
-        .await?;
-    if qr.len() >= 1 {
-        return Err(AuthError::DuplicateEmail.into());
-    }
+    let qr = match state.service.find_users(&payload.email).await? {
+        Some(qr) => qr,
+        None => return Err(AuthError::DuplicateEmail.into()),
+    };
     
     let password_hash = module::password::create_hash(&payload.password[..].as_bytes()).map_err(|err| AuthError::from(err))?;
     let new_user = entity::docuser::ActiveModel {
@@ -78,11 +85,11 @@ async fn register(State(state): State<AppState>, Json(payload): Json<RegisterPay
         hash: Set(password_hash),
         ..Default::default()
     };
-    let insert_result = entity::docuser::Entity::insert(new_user).exec(&state.db_conn).await?;
+    let insert_result = entity::docuser::Entity::insert(new_user).exec(&state.global_state.db_conn).await?;
     Ok(())
 
 }
-async fn issue(State(state): State<AppState>, ConnectInfo(addr): ConnectInfo<SocketAddr>, Json(payload): Json<IssuePayload> ) -> Result<impl IntoResponse, GlobalError> {
+async fn issue(State(state): State<ServiceState<AuthService>>, ConnectInfo(addr): ConnectInfo<SocketAddr>, Json(payload): Json<IssuePayload> ) -> Result<impl IntoResponse, GlobalError> {
     if payload.email.is_empty() || payload.password.is_empty() {
         return Err(AuthError::MissingCredential.into());
     }
@@ -90,15 +97,11 @@ async fn issue(State(state): State<AppState>, ConnectInfo(addr): ConnectInfo<Soc
     if !email_regex.is_match(&payload.email) {
         return Err(AuthError::InvalidCredential.into());  
     }
-
-    let qr = entity::docuser::Entity::find()
-        .filter(entity::docuser::Column::Email.eq(payload.email.clone()))
-        .one(&state.db_conn)
-        .await?;
-    if qr.is_none() {
-        return Err(AuthError::InvalidCredential.into());
-    }
-    let qr = qr.unwrap();
+    
+    let qr  = match state.service.find_user(&payload.email).await? {
+        Some(qr) => qr,
+        None => return Err(AuthError::InvalidCredential.into()),
+    };
     
     verify_password(&qr.hash, &payload.password[..].as_bytes()).map_err(|err| AuthError::from(err))?;
 
@@ -124,14 +127,14 @@ async fn issue(State(state): State<AppState>, ConnectInfo(addr): ConnectInfo<Soc
     let mut schema =  TokenPair::new(RedisSchemaHeader {
         key: access_token.clone(),
         expire_at: Some(access_claims.exp as usize),
-        con: state.redis_conn.clone(),
+        con: state.global_state.redis_conn.clone(),
     });
     schema.set_refresh_token(refresh_token.clone()).flush().await?;
 
     let mut schema = Refresh::new(RedisSchemaHeader {
         key: refresh_token.clone(),
         expire_at: Some(refresh_claims.exp as usize),
-        con: state.redis_conn.clone(),
+        con: state.global_state.redis_conn.clone(),
     });
     schema.set_ip(addr.to_string()).flush().await?;
     
@@ -140,40 +143,28 @@ async fn issue(State(state): State<AppState>, ConnectInfo(addr): ConnectInfo<Soc
         refresh_token,
     }))
 }
-async fn disconnect(State(state): State<AppState>, TypedHeader(Authorization(bearer)): TypedHeader<Authorization<Bearer>>, claims: Claims) -> Result<impl IntoResponse, GlobalError> {
-    let mut schema = BlackList::new(RedisSchemaHeader {
+async fn disconnect(State(state): State<ServiceState<AuthService>>, TypedHeader(Authorization(bearer)): TypedHeader<Authorization<Bearer>>, claims: Claims) -> Result<impl IntoResponse, GlobalError> {
+    state.service.create_redis_blacklist(RedisSchemaHeader {
         key: bearer.token().to_string(),
         expire_at: Some(claims.exp as usize),
-        con: state.redis_conn.clone(),
+        con: state.global_state.redis_conn.clone(),
     });
-    schema.set_status(true).flush().await?;
 
-    let mut token_pair_schema = TokenPair::new(RedisSchemaHeader {
+    state.service.sanitize_auth(RedisSchemaHeader {
         key: bearer.token().to_string(),
         expire_at: None,
-        con: state.redis_conn.clone(),
+        con: state.global_state.redis_conn.clone(),
     });
-    token_pair_schema.get_refresh_token().await?;
-
-    if token_pair_schema.refresh_token.is_some() {
-        let mut schema = Refresh::new(RedisSchemaHeader {
-            key: token_pair_schema.refresh_token.clone().unwrap(),
-            expire_at: None,
-            con: state.redis_conn.clone(),
-        });
-        schema.del_all().await?;
-    }
-    token_pair_schema.del_all().await?;
 
     Ok(()) 
 }
 
-async fn refresh(State(state): State<AppState>, ConnectInfo(addr): ConnectInfo<SocketAddr>, TypedHeader(Authorization(bearer)): TypedHeader<Authorization<Bearer>>) -> Result<impl IntoResponse, GlobalError> {
+async fn refresh(State(state): State<ServiceState<AuthService>>, ConnectInfo(addr): ConnectInfo<SocketAddr>, TypedHeader(Authorization(bearer)): TypedHeader<Authorization<Bearer>>) -> Result<impl IntoResponse, GlobalError> {
 
     let mut refresh_schema = Refresh::new(RedisSchemaHeader {
         key: bearer.token().to_string(),
         expire_at: None,
-        con: state.redis_conn.clone(),
+        con: state.global_state.redis_conn.clone(),
     });
     refresh_schema.get_ip().await?;
 
@@ -214,7 +205,7 @@ async fn refresh(State(state): State<AppState>, ConnectInfo(addr): ConnectInfo<S
     let mut schema = TokenPair::new(RedisSchemaHeader {
         key: access_token.clone(),
         expire_at: Some(claims.exp as usize),
-        con: state.redis_conn.clone(),
+        con: state.global_state.redis_conn.clone(),
     });
     schema.set_refresh_token(bearer.token().to_string()).flush().await?;
 

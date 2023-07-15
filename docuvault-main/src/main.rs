@@ -3,6 +3,7 @@ use std::{net::SocketAddr, env, sync::Arc};
 use axum::extract::FromRef;
 use bb8::Pool;
 use bb8_redis::RedisConnectionManager;
+use common::object::ServiceState;
 use sea_orm::DatabaseConnection;
 use tokio::sync::Mutex;
 use tracing;
@@ -17,6 +18,7 @@ mod routes;
 mod middleware;
 mod bootstrap;
 mod modules;
+mod common;
 
 
 // database connection pool implements clone by internally using Arc
@@ -66,7 +68,6 @@ async fn main() {
     let addr = SocketAddr::from(([0,0,0,0], 8000));
     
     bootstrap::bootstrap(state.clone()).await;
-    
 
 
     tracing::debug!("listening on {}", addr);
