@@ -11,6 +11,7 @@ pub struct RedisSchemaHeader {
     pub expire_at: Option<usize>,
     pub con: Pool<RedisConnectionManager>,
 }
+
 #[redis_schema(scope="scope")]
 pub struct Scope{
     pub docuser_id: i32,

@@ -20,6 +20,8 @@ pub mod object;
 use object::*;
 pub mod service;
 use service::*;
+pub mod constant;
+use constant::*;
 
 use self::module::password::verify_password;
 
@@ -105,38 +107,10 @@ async fn issue(State(state): State<ServiceState<AuthService>>, ConnectInfo(addr)
     
     verify_password(&qr.hash, &payload.password[..].as_bytes()).map_err(|err| AuthError::from(err))?;
 
-    let access_claims = Claims {
-        iat: chrono::Utc::now().timestamp(),
-        exp: (chrono::Utc::now() + chrono::Duration::minutes(30)).timestamp(),
-        iss: "docuvault".to_owned(),
-        user_id: qr.id,
-        token_typ: "access".to_owned(),
-    };     
-    let access_token = encode(&Header::default(), &access_claims, &ACCESS_KEYS.encoding).map_err(|err| AuthError::from(err))?;
-
-    let refresh_claims = Claims {
-        iat: chrono::Utc::now().timestamp(),
-        exp: (chrono::Utc::now() + chrono::Duration::days(3)).timestamp(),
-        iss: "docuvault".to_owned(),
-        user_id: qr.id,
-        token_typ: "refresh".to_owned(),
-    };
-    let refresh_token = encode(&Header::default(), &refresh_claims, &REFRESH_KEYS.encoding).map_err(|err|AuthError::from(err))?;
-    
-    
-    let mut schema =  TokenPair::new(RedisSchemaHeader {
-        key: access_token.clone(),
-        expire_at: Some(access_claims.exp as usize),
-        con: state.global_state.redis_conn.clone(),
-    });
-    schema.set_refresh_token(refresh_token.clone()).flush().await?;
-
-    let mut schema = Refresh::new(RedisSchemaHeader {
-        key: refresh_token.clone(),
-        expire_at: Some(refresh_claims.exp as usize),
-        con: state.global_state.redis_conn.clone(),
-    });
-    schema.set_ip(addr.to_string()).flush().await?;
+    let access_token = state.service.issue_access_token(qr.id).await?;
+    let refresh_token = state.service.issue_refresh_token(qr.id).await?;
+    state.service.set_tokenpair(&access_token, &refresh_token).await?;
+    state.service.set_refresh(&refresh_token, addr.to_string()).await?;
     
     Ok(Json(IssueResponse{
         access_token,
@@ -144,42 +118,25 @@ async fn issue(State(state): State<ServiceState<AuthService>>, ConnectInfo(addr)
     }))
 }
 async fn disconnect(State(state): State<ServiceState<AuthService>>, TypedHeader(Authorization(bearer)): TypedHeader<Authorization<Bearer>>, claims: Claims) -> Result<impl IntoResponse, GlobalError> {
-    state.service.create_redis_blacklist(RedisSchemaHeader {
-        key: bearer.token().to_string(),
-        expire_at: Some(claims.exp as usize),
-        con: state.global_state.redis_conn.clone(),
-    });
-
-    state.service.sanitize_auth(RedisSchemaHeader {
-        key: bearer.token().to_string(),
-        expire_at: None,
-        con: state.global_state.redis_conn.clone(),
-    });
-
+    state.service.set_redis_blacklist(bearer.token(), claims.exp as usize);
+    state.service.disable_auth(bearer.token());
     Ok(()) 
 }
 
 async fn refresh(State(state): State<ServiceState<AuthService>>, ConnectInfo(addr): ConnectInfo<SocketAddr>, TypedHeader(Authorization(bearer)): TypedHeader<Authorization<Bearer>>) -> Result<impl IntoResponse, GlobalError> {
 
-    let mut refresh_schema = Refresh::new(RedisSchemaHeader {
-        key: bearer.token().to_string(),
-        expire_at: None,
-        con: state.global_state.redis_conn.clone(),
-    });
-    refresh_schema.get_ip().await?;
-
-    if refresh_schema.ip.is_none() {
+    let refresh_ip = state.service.get_refresh_ip(bearer.token()).await?;
+    if refresh_ip.is_none() {
         return Err(AuthError::InvalidToken.into());
     }
 
-    let last_client_ip = refresh_schema.ip.clone().unwrap().chars().take_while(|&c| c!=':').collect::<String>();
+    let last_client_ip = refresh_ip.unwrap().chars().take_while(|&c| c!=':').collect::<String>();
     let current_client_ip = addr.to_string().chars().take_while(|&c| c!=':').collect::<String>();
     if last_client_ip != current_client_ip {
         dbg!("ip changed");
-        refresh_schema.del_all().await?;
+        state.service.remove_refresh_record(bearer.token()).await?;
         return Err(AuthError::IpChanged.into());
     }
-    
     
 
     let token_data = decode::<Claims>(bearer.token(), &REFRESH_KEYS.decoding, &Validation::default())
@@ -192,22 +149,11 @@ async fn refresh(State(state): State<ServiceState<AuthService>>, ConnectInfo(add
             }
         })?;
 
-    let claims = Claims {
-        iat: chrono::Utc::now().timestamp(),
-        exp: (chrono::Utc::now() + chrono::Duration::minutes(10)).timestamp(),
-        iss: "docuvault".to_owned(),
-        user_id: token_data.claims.user_id,
-        token_typ: "access".to_owned(),
-    };     
 
-    let access_token = encode(&Header::default(), &claims, &ACCESS_KEYS.encoding).map_err(|err|AuthError::from(err))?;
+    let access_token = state.service.issue_access_token(token_data.claims.user_id).await?;
 
-    let mut schema = TokenPair::new(RedisSchemaHeader {
-        key: access_token.clone(),
-        expire_at: Some(claims.exp as usize),
-        con: state.global_state.redis_conn.clone(),
-    });
-    schema.set_refresh_token(bearer.token().to_string()).flush().await?;
+    // needs refactoring / same as length of access_token
+    state.service.set_tokenpair(&access_token, bearer.token()).await?;
 
     Ok(Json(RefreshResponse{
         access_token,
