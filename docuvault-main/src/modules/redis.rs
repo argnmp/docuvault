@@ -3,7 +3,7 @@ use std::collections::BTreeSet;
 use axum::Json;
 use sea_orm::{entity::*, query::*};
 use redis::AsyncCommands;
-use crate::{AppState, entity, redis_schema, db::schema::redis::{Scope, RedisSchemaHeader}, routes::{error::GlobalError, document::error::DocumentError}};
+use crate::{AppState, entity, db::schema::redis::{Scope, RedisSchemaHeader}, routes::{error::GlobalError, document::error::DocumentError}};
 
 pub async fn redis_reset_scopes(state: AppState){
     /*

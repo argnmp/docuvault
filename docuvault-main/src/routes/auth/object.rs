@@ -15,7 +15,7 @@ use serde::{Serialize, Deserialize};
 use sea_orm::{entity::*, query::*, DatabaseConnection};
 use redis::AsyncCommands;
 
-use crate::{AppState, redis_schema, db::macros::RedisSchemaHeader};
+use crate::{AppState, db::schema::redis::{BlackList, RedisSchemaHeader}};
 use crate::entity;
 
 use super::AuthError;
@@ -98,16 +98,14 @@ impl<S> FromRequestParts<S> for Claims
                 }
             })?;
 
-        let con = Pool::<RedisConnectionManager>::from_ref(state);
-        let redis_header = RedisSchemaHeader {
-            scope: "blacklist".to_string(),
+        let header = RedisSchemaHeader {
             key: bearer.token().to_string(),
-            expire_at: None, 
-            con,
+            expire_at: None,
+            con: Pool::<RedisConnectionManager>::from_ref(state),
         };
-        let mut redis_schema = redis_schema!(redis_header, {status: bool});
-        redis_schema.get_status().await;
-        if redis_schema.status.is_some() {
+        let mut schema = BlackList::new(header);
+        schema.get_status().await;
+        if schema.status.is_some(){
             return Err(AuthError::InvalidToken);
         }
         

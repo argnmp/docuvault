@@ -9,7 +9,7 @@ use redis::{AsyncCommands};
 use tower_http::cors::{CorsLayer, Any};
 
 
-use crate::{redis_schema, db::{schema::redis::{TokenPair, RedisSchemaHeader, Refresh, BlackList}}, common::object::ServiceState};
+use crate::{db::schema::redis::{TokenPair, RedisSchemaHeader, Refresh, BlackList}, common::object::ServiceState};
 use crate::AppState;
 use crate::entity;
 use crate::middleware::guard::Authenticate;

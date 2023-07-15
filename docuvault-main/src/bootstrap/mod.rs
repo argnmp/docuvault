@@ -1,7 +1,7 @@
 use redis::AsyncCommands;
 use sea_orm::{entity::*, query::*};
 
-use crate::{AppState, entity, redis_schema, db::macros::RedisSchemaHeader, modules::redis::redis_reset_scopes};
+use crate::{AppState, entity, modules::redis::redis_reset_scopes};
 
 pub async fn bootstrap(state: AppState) {
     redis_set_tags(state.clone()).await;

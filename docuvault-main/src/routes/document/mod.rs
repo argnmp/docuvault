@@ -19,7 +19,6 @@ use sea_orm::{entity::*, query::*, FromQueryResult};
 use serde::Serialize;
 use tonic::Request;
 use tower_http::cors::{CorsLayer, Any};
-use crate::db::macros::RedisSchemaHeader;
 use crate::modules::background::conversion::{self, convert_to_html, extension};
 use crate::modules::background::sanitize::sanitize;
 use crate::modules::grpc::convert::ConvertRequest;
@@ -30,7 +29,7 @@ use crate::modules::grpc::upload::UploadRequest;
 use crate::modules::grpc::upload::upload_client::UploadClient;
 use crate::modules::markdown::get_title;
 use crate::modules::redis::redis_does_docuser_have_scope;
-use crate::{AppState, entity, redis_schema};
+use crate::{AppState, entity};
 
 
 pub mod error;
