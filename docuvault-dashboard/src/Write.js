@@ -15,12 +15,33 @@ import {
 import Grid2 from "@mui/material/Unstable_Grid2/Grid2";
 import { Box } from "@mui/system";
 import axios from "axios";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useDispatch, useSelector } from "react-redux";
-import { useNavigate } from "react-router-dom";
+import { useLoaderData, useNavigate } from "react-router-dom";
 import Scope from "./components/Scope";
 import SequenceSelect from "./components/SequenceSelect";
 import { opfail, oppass } from "./state/common";
+
+export async function loader({ params, state }) {
+    try {
+        const res = await axios.post(
+            "http://localhost:8000/document/pre_create",
+            {
+              raw: "",
+            },
+            {
+                headers: {
+                    Authorization: `Bearer ${state.auth.access_token}`,
+                },
+                withCredentials: true,
+            }
+        );
+        return { isSuccess: true, loadedRaw: res.data.raw };
+    } catch (e) {
+        console.log(e);
+        return { isSuccess: false, loadedRaw: "", msg: e.response.data };
+    }
+}
 
 const Wrapper = styled(Box)(({ theme }) => ({
     border: "1px solid",
@@ -47,6 +68,7 @@ const Tag = styled(Button)(({ theme }) => ({
     marginBottom: "4px",
 }));
 export default function Write({ setToastOpen }) {
+    const { isSuccess, loadedRaw, msg } = useLoaderData();
     const dispatch = useDispatch();
     const navigate = useNavigate();
     const [raw, setRaw] = useState("");
@@ -64,6 +86,16 @@ export default function Write({ setToastOpen }) {
     let [checked, setChecked] = useState(scope_state);
 
     const [sequenceId, setSequenceId] = useState(0);
+
+    useEffect(() => {
+        if (isSuccess) {
+          setRaw(loadedRaw); 
+          dispatch(oppass({msg: "document fetch success"}));
+        } else {
+          dispatch(opfail({ msg }));
+          setToastOpen(true);
+        }
+    }, []);
 
     const handleSubmit = async (e) => {
         e.preventDefault();
@@ -98,6 +130,29 @@ export default function Write({ setToastOpen }) {
             return;
         }
     };
+    const handleTemporarySubmit = async (e) => {
+      e.preventDefault();
+      try {
+        let res = await axios.post(
+          "http://localhost:8000/document/pending_create",
+          {
+            raw,
+          },
+          {
+            headers: {
+              Authorization: `Bearer ${access_token}`,
+            },
+            withCredentials: true,
+          }
+        );
+        dispatch(oppass({ msg: "temporary save success"}));
+        setToastOpen(true);
+      } catch (e) {
+        dispatch(opfail({ msg: e.response.data }));
+        setToastOpen(true);
+        return;
+      }
+    }
     const handleTagAdd = (e) => {
         if (e.target.value != "") {
             setTags([
@@ -220,6 +275,13 @@ export default function Write({ setToastOpen }) {
                     />
                 </Grid2>
                 <Grid2 sx={{ marginTop: "8px", marginBottom: "8px" }} sm={12}>
+                    <Btn
+                        type="submit"
+                        variant="contained"
+                        onClick={(e) => handleTemporarySubmit(e)}
+                    >
+                        tempSubmit 
+                    </Btn>
                     <Btn
                         type="submit"
                         variant="contained"

@@ -446,6 +446,7 @@ async fn list(State(state): State<AppState>, claims: Claims, Json(payload): Json
         // .all(&state.db_conn)
         // .await?;
     let res = res.fetch_page(unit_number).await?; 
+    dbg!(&res);
     
     let mut list: Vec<CompDocs> = Vec::new();
     for docs in res {
@@ -472,6 +473,9 @@ async fn list(State(state): State<AppState>, claims: Claims, Json(payload): Json
                 compdocs.scope_ids.insert(docs.scope_id);
                 if let Some(tag_id) = docs.tag_id {
                     compdocs.tag_ids.insert(tag_id);
+                }
+                if let Some(seq_id) = docs.seq_id {
+                    compdocs.seq_ids.insert(seq_id);
                 }
                 list.push(compdocs);
 

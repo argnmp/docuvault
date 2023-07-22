@@ -4,7 +4,7 @@ use axum::{
     extract::{FromRequestParts, TypedHeader, State, FromRef}, 
     headers::{Authorization, authorization::Bearer}, 
     http::request::Parts,
-    RequestPartsExt,
+    RequestPartsExt, response::IntoResponse, Json,
 };
 use bb8::Pool;
 use bb8_redis::RedisConnectionManager;
@@ -14,6 +14,27 @@ use serde::{Deserialize, Serialize};
 use sea_orm::{entity::*, query::*, FromQueryResult, DatabaseConnection};
 
 use super::error::DocumentError;
+
+// pre_create
+pub enum DocumentStatus {
+    DELETED = 0,
+    PENDING = 1,
+    CREATED = 2,
+}
+
+// pending_create
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct PendingCreatePayload {
+    pub raw: String,
+}
+#[derive(Serialize)]
+pub struct PendingCreateResponse {
+    pub exists: bool,
+    pub raw: String,
+}
+
+
+// create
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct CreatePayload {

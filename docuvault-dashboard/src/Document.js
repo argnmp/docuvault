@@ -8,7 +8,6 @@ import { opfail, oppass } from "./state/common";
 
 export async function loader({ params, state }) {
     try {
-        console.log(state.resource.scope_ids);
         const res = await axios.post(
             "http://localhost:8000/document/publish",
             {

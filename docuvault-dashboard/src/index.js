@@ -5,7 +5,7 @@ import createSagaMiddleware from '@redux-saga/core';
 import Error from './Error';
 import Login from './Login';
 import List from './List';
-import Write from './Write';
+import Write, {loader as writeLoader} from './Write';
 import Tag from './Tag';
 import Sequence, {loader as sequenceLoader} from './Sequence';
 import SequenceList, {loader as sequenceListLoader} from './SequenceList';
@@ -35,6 +35,7 @@ const router = createBrowserRouter([
     {
         path: "/write",
         element: <Layout><Write/></Layout>,
+        loader: (p) => writeLoader({...p, state: store.getState()}),
         errorElement: <Error/>
     },
     
