@@ -1,16 +1,19 @@
+use std::sync::{Arc, Mutex};
 use sea_orm::{entity::*, query::*, FromQueryResult};
-use crate::{AppState, modules::{redis::redis_does_docuser_have_scope, markdown::get_title}, routes::error::GlobalError, entity::{self, docorg::ActiveModel}};
+use crate::{AppState, modules::{redis::redis_does_docuser_have_scope, markdown::get_title, tag::{TagSetModule, application::port::input::TagSetUseCase, domain::entity::tag::Tag}}, routes::error::GlobalError, entity::{self, docorg::ActiveModel}};
 
 use super::{object::{DocumentStatus, PendingCreatePayload, PendingCreateResponse, CreatePayload}, error::DocumentError};
 
 #[derive(Clone, Debug)]
 pub struct DocumentService{
     state: AppState,
+    tag_module: Arc<TagSetModule>,
 }
 impl DocumentService {
     pub fn new(shared_state: AppState) -> Self{
         Self {
-            state: shared_state,
+            state: shared_state.clone(),
+            tag_module: Arc::new(TagSetModule::new(shared_state.db_conn)),
         }
     }
     
@@ -106,6 +109,10 @@ impl DocumentService {
         }
         Ok(res)
     }
-    
+    pub async fn test_tag(&self) -> Result<(), GlobalError>{
+        let tag_service = self.tag_module.get_service();
+        tag_service.add("sample tag".to_string()).await?;
+        Ok(())
+    }
 }
 

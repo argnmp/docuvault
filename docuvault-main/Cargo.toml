@@ -35,6 +35,7 @@ prost = "0.11.8"
 futures = "0.3.26"
 futures-util = "0.3.26"
 docx = "1.1.2"
+async-trait = "0.1.72"
 
 [build-dependencies]
 tonic-build = "0.8.4"

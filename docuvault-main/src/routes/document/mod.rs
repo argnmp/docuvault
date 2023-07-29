@@ -50,9 +50,10 @@ use super::resource::error::ResourceError;
 pub fn create_router(shared_state: AppState) -> Router {
     let service_state: ServiceState<DocumentService> = ServiceState {
         global_state: shared_state.clone(),
-        service: Arc::new(DocumentService::new(shared_state.clone()))
+        service: Arc::new(DocumentService::new(shared_state.clone())),
     };
     Router::new()
+        .route("/test", get(test))
         .route("/pre_create", post(pre_create))
         .route("/pending_create", post(pending_create))
         .route("/create", post(createv2))
@@ -71,6 +72,10 @@ pub fn create_router(shared_state: AppState) -> Router {
                 .allow_credentials(true)
             )
         .with_state(service_state)
+}
+async fn test(State(state): State<ServiceState<DocumentService>>) -> Result<impl IntoResponse, GlobalError>{
+    let res = state.service.test_tag().await?;
+    Ok(())
 }
 async fn pre_create(State(state): State<ServiceState<DocumentService>>, claims: Claims, Json(payload): Json<PendingCreatePayload>) -> Result<impl IntoResponse, GlobalError>{
     let res = state.service.create_or_get_pending_document(claims.user_id, payload).await?; 
