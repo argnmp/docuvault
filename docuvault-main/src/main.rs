@@ -4,6 +4,8 @@ use axum::extract::FromRef;
 use bb8::Pool;
 use bb8_redis::RedisConnectionManager;
 use common::object::ServiceState;
+use modules::Modules;
+use once_cell::sync::Lazy;
 use sea_orm::DatabaseConnection;
 use tokio::sync::Mutex;
 use tracing;
@@ -20,13 +22,13 @@ mod bootstrap;
 mod modules;
 mod common;
 
-
 // database connection pool implements clone by internally using Arc
 #[derive(Clone, Debug)]
 pub struct AppState {
     db_conn: DatabaseConnection,
     redis_conn: Pool<RedisConnectionManager>,
     file_proxy_addr: Arc<Mutex<String>>,
+    modules: Arc<Modules>,
 }
 impl FromRef<AppState> for DatabaseConnection {
     fn from_ref(input: &AppState) -> Self {
@@ -50,7 +52,8 @@ async fn main() {
         .with(tracing_subscriber::fmt::layer())
         .init();
 
-    let db_conn    = db::postgres_connect().await;
+    let db_conn = db::postgres_connect().await;
+
     /*
      * migrate database
      */
@@ -59,15 +62,17 @@ async fn main() {
     let file_proxy_addr = env::var("FILE_PROXY_ADDR").expect("file proxy addr is not set.");
     let redis_conn = db::redis_connect().await;
     let state = AppState{
-        db_conn,
-        redis_conn,
+        db_conn: db_conn.clone(),
+        redis_conn: redis_conn.clone(),
         file_proxy_addr: Arc::new(Mutex::new(file_proxy_addr)), 
+        modules: Arc::new(Modules::new(db_conn, redis_conn).await)
     };
 
     
     let addr = SocketAddr::from(([0,0,0,0], 8000));
     
     bootstrap::bootstrap(state.clone()).await;
+
 
 
     tracing::debug!("listening on {}", addr);

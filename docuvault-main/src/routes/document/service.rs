@@ -7,13 +7,13 @@ use super::{object::{DocumentStatus, PendingCreatePayload, PendingCreateResponse
 #[derive(Clone, Debug)]
 pub struct DocumentService{
     state: AppState,
-    tag_module: Arc<TagSetModule>,
+    //pub tag_module: Arc<TagSetModule>,
 }
 impl DocumentService {
     pub fn new(shared_state: AppState) -> Self{
         Self {
             state: shared_state.clone(),
-            tag_module: Arc::new(TagSetModule::new(shared_state.db_conn)),
+            //tag_module: Arc::new(TagSetModule::new(shared_state.db_conn)),
         }
     }
     
@@ -108,11 +108,6 @@ impl DocumentService {
             }
         }
         Ok(res)
-    }
-    pub async fn test_tag(&self) -> Result<(), GlobalError>{
-        let tag_service = self.tag_module.get_service();
-        tag_service.add("sample tag".to_string()).await?;
-        Ok(())
     }
 }
 

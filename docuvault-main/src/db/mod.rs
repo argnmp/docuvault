@@ -1,6 +1,7 @@
-use std::{env, time::Duration};
+use std::{env, time::Duration, sync::Arc};
 use bb8::Pool;
 use bb8_redis::RedisConnectionManager;
+use redis::Client;
 use sea_orm::{Database, DatabaseConnection, ConnectOptions};
 
 pub async fn postgres_connect() -> DatabaseConnection {
@@ -28,3 +29,4 @@ pub async fn redis_connect() -> Pool<RedisConnectionManager> {
     let pool = bb8::Pool::builder().build(manager).await.unwrap();
     pool
 }
+

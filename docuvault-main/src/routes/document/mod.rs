@@ -30,6 +30,9 @@ use crate::modules::grpc::upload::UploadRequest;
 use crate::modules::grpc::upload::upload_client::UploadClient;
 use crate::modules::markdown::get_title;
 use crate::modules::redis::redis_does_docuser_have_scope;
+use crate::modules::tag::application::port::input::TagSetUseCase;
+use crate::modules::tag::domain::entity::tag::Tag;
+use crate::modules::tag::domain::entity::tag_set::TagSet;
 use crate::{AppState, entity};
 
 
@@ -56,8 +59,7 @@ pub fn create_router(shared_state: AppState) -> Router {
         .route("/test", get(test))
         .route("/pre_create", post(pre_create))
         .route("/pending_create", post(pending_create))
-        .route("/create", post(createv2))
-        // .route("/create", post(create))
+        .route("/create", post(create))
         .route("/convert", post(convert))
         .route("/get_update_resource/:doc_id", post(get_update_resource))
         .route("/delete", post(delete))
@@ -74,7 +76,7 @@ pub fn create_router(shared_state: AppState) -> Router {
         .with_state(service_state)
 }
 async fn test(State(state): State<ServiceState<DocumentService>>) -> Result<impl IntoResponse, GlobalError>{
-    let res = state.service.test_tag().await?;
+    //let res = state.service.test_tag().await?;
     Ok(())
 }
 async fn pre_create(State(state): State<ServiceState<DocumentService>>, claims: Claims, Json(payload): Json<PendingCreatePayload>) -> Result<impl IntoResponse, GlobalError>{
@@ -85,7 +87,7 @@ async fn pending_create(State(state): State<ServiceState<DocumentService>>, clai
     let res = state.service.overwrite_pending_document(claims.user_id, payload).await?;
     Ok(Json(res))
 }
-async fn createv2(State(state): State<ServiceState<DocumentService>>, claims: Claims, Json(payload): Json<CreatePayload>) -> Result<impl IntoResponse, GlobalError>{
+async fn create(State(state): State<ServiceState<DocumentService>>, claims: Claims, Json(payload): Json<CreatePayload>) -> Result<impl IntoResponse, GlobalError>{
 
     /*
      * check user has scope
@@ -148,29 +150,19 @@ async fn createv2(State(state): State<ServiceState<DocumentService>>, claims: Cl
              */
 
             if payload.tags.len()>0 {
-                let mut con = state.global_state.redis_conn.get().await?;
-                let tags: std::collections::BTreeSet<String> = con.zrange("tags", 0, -1).await?;
+                let tags: TagSet = state.global_state.modules.tag.service.get().await?;
                 let document_tags = payload.tags.into_iter().map(|tag|tag.trim().to_lowercase().to_string()).collect::<std::collections::BTreeSet<_>>();
 
-                let new_tags = document_tags.iter().filter(|tag| !tags.contains(&tag[..])).map(|tag| (0, tag.clone())).collect::<Vec<_>>();
+                let new_tags = document_tags.iter().filter(|tag| !tags.tags.contains(&Tag::new(tag.to_string()))).map(|tag| (0, tag.clone())).collect::<Vec<_>>();
 
 
-                if new_tags.len() > 0{
-
-                    let models = new_tags.iter().map(|(_, tag)| entity::tag::ActiveModel {
-                        value: Set(tag.clone()),
-                        ..Default::default()
-                    }).collect::<Vec<_>>();
-
-                    let res = entity::tag::Entity::insert_many(models).exec(txn).await?;
-
+                for (_, tag) in &new_tags {
+                    state.global_state.modules.tag.service.add(tag.clone()).await?;
                 }
-
 
                 let mut cond = Condition::any();
                 for tag in &document_tags {
                     cond = cond.add(entity::tag::Column::Value.eq(tag.clone()));
-
                 }
                 let res = entity::tag::Entity::find().filter(cond).all(txn).await?;
 
@@ -182,12 +174,6 @@ async fn createv2(State(state): State<ServiceState<DocumentService>>, claims: Cl
                     }
                 }).collect::<Vec<_>>();
                 let res = entity::docorg_tag::Entity::insert_many(models).exec(txn).await?;
-
-
-                //update tags last
-                if new_tags.len() > 0{
-                    let _:() = con.zadd_multiple("tags", &new_tags[..]).await?;
-                }
             }
 
             /*
@@ -269,212 +255,13 @@ async fn createv2(State(state): State<ServiceState<DocumentService>>, claims: Cl
         conversion::convert_to_html(state.global_state.clone(), convert_id, payload.raw.clone());
     }
 
-    /*
-     * after fixing file in file server, clean up all temporary files
+    /* after fixing file in file server, clean up all temporary files
      * this is asynchronous task
      */
     sanitize(state.global_state.clone(), claims.user_id); 
 
     Ok(())
 }
-/* async fn create(State(state): State<ServiceState<DocumentService>>, claims: Claims, Json(payload): Json<CreatePayload>) -> Result<impl IntoResponse, GlobalError>{
-
-    /*
-     * check user has scope
-     */
-    state.service.check_user_has_scope(claims.user_id, &payload.scope_ids[..]).await?;
-
-    /*
-     * insert new document(docorg)
-     */
-
-    let cloned_state = state.clone();
-    let mut docres = Arc::new(Mutex::new(None));
-    let cloned_docres = docres.clone();
-
-    let mut convertres = Arc::new(Mutex::new(None));
-    let cloned_convertres = convertres.clone();
-    let cloned_payload = payload.clone();
-    
-    state.global_state.db_conn.clone().transaction::<_, (), GlobalError>(|txn|{
-        Box::pin(async move {
-            
-            let state = cloned_state;
-            let convertres = cloned_convertres;
-            let payload = cloned_payload;
-            /*
-             * create document
-             */
-            let new_doc = entity::docorg::ActiveModel {
-                title: Set(get_title(&payload.raw.clone())),
-                raw: Set(payload.raw.clone()), 
-                docuser_id: Set(claims.user_id),
-                status: Set(DocumentStatus::CREATED as i32),
-                ..Default::default()
-            };
-            let docres = entity::docorg::Entity::insert(new_doc).exec(txn).await?;
-            *cloned_docres.lock().await = Some(docres.last_insert_id);
-            
-    
-            /*
-             * create pending convert to html
-             */
-
-            let new_convert = entity::convert::ActiveModel {
-                docorg_id: Set(docres.last_insert_id),
-                c_type: Set(0),
-                status: Set(0),
-                ..Default::default()
-            };
-            *convertres.lock().await =  Some(entity::convert::Entity::insert(new_convert).exec(txn).await?.last_insert_id);
-
-
-            /*
-             * connect to scope
-             */
-            let scope_ids: Vec<_> = payload.scope_ids.iter().map(|&value|{
-                entity::docorg_scope::ActiveModel {
-                    docorg_id: Set(docres.last_insert_id),
-                    scope_id: Set(value),
-                    ..Default::default()
-                }
-            }).collect();
-            let _ = entity::docorg_scope::Entity::insert_many(scope_ids).exec(txn).await?;
-
-            /*
-             * connect to tags
-             */
-
-            if payload.tags.len()>0 {
-                let mut con = state.global_state.redis_conn.get().await?;
-                let tags: std::collections::BTreeSet<String> = con.zrange("tags", 0, -1).await?;
-                let document_tags = payload.tags.into_iter().map(|tag|tag.trim().to_lowercase().to_string()).collect::<std::collections::BTreeSet<_>>();
-
-                let new_tags = document_tags.iter().filter(|tag| !tags.contains(&tag[..])).map(|tag| (0, tag.clone())).collect::<Vec<_>>();
-
-
-                if new_tags.len() > 0{
-
-                    let models = new_tags.iter().map(|(_, tag)| entity::tag::ActiveModel {
-                        value: Set(tag.clone()),
-                        ..Default::default()
-                    }).collect::<Vec<_>>();
-
-                    let res = entity::tag::Entity::insert_many(models).exec(txn).await?;
-
-                }
-
-
-                let mut cond = Condition::any();
-                for tag in &document_tags {
-                    cond = cond.add(entity::tag::Column::Value.eq(tag.clone()));
-
-                }
-                let res = entity::tag::Entity::find().filter(cond).all(txn).await?;
-
-                let models = res.iter().map(|m|{
-                    entity::docorg_tag::ActiveModel {
-                        docorg_id: Set(docres.last_insert_id),
-                        tag_id: Set(m.id),
-                        ..Default::default()
-                    }
-                }).collect::<Vec<_>>();
-                let res = entity::docorg_tag::Entity::insert_many(models).exec(txn).await?;
-
-
-                //update tags last
-                if new_tags.len() > 0{
-                    let _:() = con.zadd_multiple("tags", &new_tags[..]).await?;
-                }
-            }
-
-            /*
-             * build sequence
-             */
-
-            if let Some(seq_id) = payload.seq_id {
-                let seq = entity::sequence::Entity::find_by_id(seq_id)
-                    .filter(entity::sequence::Column::DocuserId.eq(claims.user_id))
-                    .one(&state.global_state.db_conn)
-                    .await?;
-
-                if seq.is_none() {
-                    return Err(ResourceError::SequenceNotExist.into());  
-                }
-
-                #[derive(FromQueryResult, Serialize, Debug)]
-                struct DocorgSeq  {
-                    last_order: i32,
-                };
-
-                let seq = entity::docorg_sequence::Entity::find()
-                    .filter(entity::docorg_sequence::Column::SequenceId.eq(seq_id))
-                    .select_only()
-                    .column_as(entity::docorg_sequence::Column::Order.max(), "last_order")
-                    .group_by(entity::docorg_sequence::Column::SequenceId)
-                    .into_model::<DocorgSeq>()
-                    .one(txn)
-                    .await?;
-
-                let seq = match seq {
-                    Some(seq) => seq,
-                    None => DocorgSeq {
-                        last_order: 0,
-                    }
-                };
-
-                let docseq = entity::docorg_sequence::ActiveModel {
-                    sequence_id: Set(seq_id),
-                    docorg_id: Set(docres.last_insert_id),
-                    order: Set(seq.last_order + 1),
-                };
-
-                docseq.insert(txn).await?;
-            }
-            Ok(())
-        })
-    }).await?; 
-
-    /*
-     * find object ids
-     */
-    let file_proxy_addr = env::var("FILE_PROXY_ADDR").expect("file proxy addr is not set.");
-    let mut upload_client = UploadClient::connect(file_proxy_addr).await.unwrap();
-
-    if let Some(doc_id) = *docres.lock().await {
-        let re = Regex::new(r"file/((?:\[??[^\[\]]*?\)))").unwrap();
-        let mut reiter = re.find_iter(&payload.raw[..]);
-        for m in reiter {
-            let mut chars = m.as_str().chars();
-            for _ in 0..5 {
-                chars.next();
-            }
-            chars.next_back();
-            dbg!(chars.as_str());
-            let req = tonic::Request::new(UploadRequest{
-                doc_id,
-                object_id: chars.as_str().to_owned(),
-            });
-
-            match upload_client.upload(req).await {
-                Ok(_) => {},
-                Err(e) => {dbg!(e);}
-            };
-        }
-    }
-
-    if let Some(convert_id) = *convertres.lock().await {
-        conversion::convert_to_html(state.global_state.clone(), convert_id, payload.raw.clone());
-    }
-
-    /*
-     * after fixing file in file server, clean up all temporary files
-     * this is asynchronous task
-     */
-    sanitize(state.global_state.clone(), claims.user_id); 
-
-    Ok(())
-} */
 async fn get_update_resource(State(state): State<ServiceState<DocumentService>>, claims: Claims, Path(doc_id): Path<i32>) -> Result<impl IntoResponse, GlobalError>{
     #[derive(FromQueryResult, Serialize, Debug)]
     struct Docs {
@@ -596,21 +383,15 @@ async fn update(State(state): State<ServiceState<DocumentService>>, claims: Clai
              */
 
             if payload.tags.len()>0 {
-                let mut con = state.global_state.redis_conn.get().await?;
-                let tags: std::collections::BTreeSet<String> = con.zrange("tags", 0, -1).await?;
+                let tags = state.global_state.modules.tag.service.get().await?;
+                
                 let document_tags = payload.tags.into_iter().map(|tag|tag.trim().to_lowercase().to_string()).collect::<std::collections::BTreeSet<_>>();
 
-                let new_tags = document_tags.iter().filter(|tag| !tags.contains(&tag[..])).map(|tag| (0, tag.clone())).collect::<Vec<_>>();
+                let new_tags = document_tags.iter().filter(|tag| !tags.tags.contains(&Tag::new(tag.to_string()))).map(|tag| (0, tag.clone())).collect::<Vec<_>>();
 
-                if new_tags.len() > 0{
-                    let models = new_tags.iter().map(|(_, tag)| entity::tag::ActiveModel {
-                        value: Set(tag.clone()),
-                        ..Default::default()
-                    }).collect::<Vec<_>>();
-
-                    let res = entity::tag::Entity::insert_many(models).exec(txn).await?;
+                for (_, tag) in &new_tags {
+                    state.global_state.modules.tag.service.add(tag.clone()).await?;
                 }
-
 
                 let mut cond = Condition::any();
                 for tag in &document_tags {
@@ -628,10 +409,6 @@ async fn update(State(state): State<ServiceState<DocumentService>>, claims: Clai
                 }).collect::<Vec<_>>();
                 let res = entity::docorg_tag::Entity::insert_many(models).exec(txn).await?;
 
-                //update tags last
-                if new_tags.len() > 0{
-                    let _:() = con.zadd_multiple("tags", &new_tags[..]).await?;
-                }
             }
             /*
              * build sequence
