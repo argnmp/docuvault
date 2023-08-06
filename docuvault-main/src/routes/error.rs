@@ -7,6 +7,8 @@ use axum::{
 };
 use redis::RedisError;
 
+use crate::modules::sequence::error::SequenceError;
+
 use super::auth::error::AuthError;
 use super::document::error::DocumentError;
 use super::file::error::FileError;
@@ -25,6 +27,7 @@ pub enum GlobalError {
     Document(DocumentError),
     Resource(ResourceError),
     File(FileError),
+    Sequence(SequenceError),
 }
 impl Display for GlobalError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -46,6 +49,7 @@ impl IntoResponse for GlobalError {
             Self::Document(error) => error.into_response(),
             Self::Resource(error) => error.into_response(),
             Self::File(error) => error.into_response(),
+            Self::Sequence(error) => error.into_response(),
         }
     }
 }

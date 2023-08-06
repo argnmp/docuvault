@@ -19,7 +19,7 @@ pub struct TagSetPersistentAdapter {
 }
 impl TagSetPersistentAdapter {
     pub fn new(conn: DatabaseConnection) -> Self {
-        TagSetPersistentAdapter { conn }
+        Self { conn }
     }
 }
 #[async_trait()]
