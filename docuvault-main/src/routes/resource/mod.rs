@@ -6,18 +6,24 @@ use serde::Serialize;
 use tower_http::cors::{CorsLayer, Any};
 use sea_orm::{entity::*, query::*};
 
-use crate::{AppState, entity, modules::redis::{redis_does_docuser_have_scope}, routes::document::error::DocumentError};
+use crate::{AppState, entity, modules::redis::redis_does_docuser_have_scope, routes::document::error::DocumentError, common::object::ServiceState};
 
 pub mod object;
 use object::*;
 pub mod error;
 use error::*;
+pub mod service;
+use service::*;
 
 use super::error::GlobalError;
 use super::auth::object::Claims;
 use super::auth::object::Claims as Authenticate;
 
 pub fn create_router(shared_state: AppState) -> Router {
+    let service_state: ServiceState<ResourceService> = ServiceState {
+        global_state: shared_state.clone(),
+        service: Arc::new(ResourceService::new(shared_state.clone())),
+    };
     Router::new()
         .route("/list", post(list))
         .route("/tag", post(tag))
@@ -32,6 +38,10 @@ pub fn create_router(shared_state: AppState) -> Router {
         .route("/sequence/in", post(sequence::doc_in))
         //dashboard only
         .route("/sequence/update", post(sequence::update))
+        //dashboard only
+        .route("/sequence/up", post(sequence::doc_up))
+        //dashboard only
+        .route("/sequence/down", post(sequence::doc_down))
         .layer(
             CorsLayer::new()
                 .allow_origin("http://localhost:3000".parse::<HeaderValue>().unwrap())
@@ -39,14 +49,14 @@ pub fn create_router(shared_state: AppState) -> Router {
                 .allow_headers([header::AUTHORIZATION, header::CONTENT_TYPE])
                 .allow_credentials(true)
             )
-        .with_state(shared_state)
+        .with_state(service_state)
 }
 mod scope {
     use super::*;
-    pub async fn all(State(state): State<AppState>, claims: Claims) -> Result<impl IntoResponse, GlobalError> {
+    pub async fn all(State(state): State<ServiceState<ResourceService>>, claims: Claims) -> Result<impl IntoResponse, GlobalError> {
         let res = entity::scope::Entity::find()
             .filter(entity::scope::Column::DocuserId.eq(claims.user_id))
-            .all(&state.db_conn)
+            .all(&state.global_state.db_conn)
             .await?;
 
         let res = res.into_iter().map(|m|(m.id, m.name)).collect::<Vec<(_,_)>>();
@@ -60,11 +70,13 @@ mod sequence {
     use std::collections::HashMap;
 
     use axum::extract::Path;
+    use crate::modules::sequence::{domain::entity::sequence::SequenceObj, application::port::input::SequenceUseCase};
+
     use super::*;
-    pub async fn all(State(state): State<AppState>, claims: Claims, Json(payload): Json<SequenceAllPayload>) -> Result<impl IntoResponse, GlobalError> {
+    pub async fn all(State(state): State<ServiceState<ResourceService>>, claims: Claims, Json(payload): Json<SequenceAllPayload>) -> Result<impl IntoResponse, GlobalError> {
         // inquire should be based on scope ids
 
-        redis_does_docuser_have_scope(state.clone(), &payload.scope_ids[..], claims.user_id).await?;
+        redis_does_docuser_have_scope(state.global_state.clone(), &payload.scope_ids[..], claims.user_id).await?;
         
         let mut cond = Condition::any();
         for scope_id in payload.scope_ids {
@@ -82,19 +94,19 @@ mod sequence {
             .filter(cond)
             .group_by(entity::sequence::Column::Id)
             .into_model::<Sequence>()
-            .all(&state.db_conn)
+            .all(&state.global_state.db_conn)
             .await?;
 
         Ok(Json(res))
     }       
 
-    pub async fn list(State(state): State<AppState>, claims: Claims, Json(payload): Json<SequenceListPayload>) -> Result<impl IntoResponse, GlobalError> {
+    pub async fn list(State(state): State<ServiceState<ResourceService>>, claims: Claims, Json(payload): Json<SequenceListPayload>) -> Result<impl IntoResponse, GlobalError> {
         //inquire is based on scope ids
 
         /*
          * check user has scope ID
          */
-        redis_does_docuser_have_scope(state.clone(), &payload.scope_ids[..], claims.user_id).await?;
+        redis_does_docuser_have_scope(state.global_state.clone(), &payload.scope_ids[..], claims.user_id).await?;
 
         /*
          * return document list
@@ -110,7 +122,7 @@ mod sequence {
         let res = entity::scope_sequence::Entity::find()
             .filter(entity::scope_sequence::Column::SequenceId.eq(payload.seq_id))
             .filter(scope_id_cond.clone())
-            .one(&state.db_conn)
+            .one(&state.global_state.db_conn)
             .await?;
         if res.is_none() {
             return Err(ResourceError::SequenceNotExist.into());
@@ -135,7 +147,7 @@ mod sequence {
             .filter(entity::docorg_sequence::Column::SequenceId.eq(payload.seq_id))
             .order_by_asc(entity::docorg_sequence::Column::Order)
             .into_model::<SeqDocs>()
-            .all(&state.db_conn)
+            .all(&state.global_state.db_conn)
             .await?;
 
         let mut list: Vec<SeqCompDocs> = Vec::new();
@@ -170,133 +182,70 @@ mod sequence {
 
         Ok(Json(list))
     }       
-    pub async fn new(State(state): State<AppState>, claims: Claims, Json(payload): Json<SeqNewPayload>) -> Result<impl IntoResponse, GlobalError> {
+    pub async fn new(State(state): State<ServiceState<ResourceService>>, claims: Claims, Json(payload): Json<SeqNewPayload>) -> Result<impl IntoResponse, GlobalError> {
         /*
          * check user has scope ID
          */
-        redis_does_docuser_have_scope(state.clone(), &payload.scope_ids[..], claims.user_id).await?;
+        redis_does_docuser_have_scope(state.global_state.clone(), &payload.scope_ids[..], claims.user_id).await?;
 
-        state.db_conn.clone().transaction::<_, (), GlobalError>(|txn|{
-            Box::pin(async move {
-                let seq = entity::sequence::ActiveModel {
-                    title: Set(payload.title),
-                    docuser_id: Set(claims.user_id),
-                    ..Default::default()
-                };
-                let seqres = entity::sequence::Entity::insert(seq).exec(txn).await?;
+        let new_seq = SequenceObj::new(claims.user_id, payload.title, payload.scope_ids);
+        state.global_state.modules.sequence.service.create_seq(new_seq).await?;
 
-                let mut scoseqs = vec![];
-                for scope_id in payload.scope_ids {
-                    scoseqs.push(entity::scope_sequence::ActiveModel {
-                        sequence_id: Set(seqres.last_insert_id),
-                        scope_id: Set(scope_id),
-                    });
-                }
-                let res = entity::scope_sequence::Entity::insert_many(scoseqs).exec(txn).await?;
-                Ok(())
-            })
-        }).await?;
         
         Ok(())
     }
 
-    pub async fn delete(State(state): State<AppState>, claims: Claims, Json(payload): Json<SeqDeletePayload>) -> Result<impl IntoResponse, GlobalError> {
-        // check user has sequence
-        let res = entity::sequence::Entity::find_by_id(payload.seq_id)
-            .filter(entity::sequence::Column::DocuserId.eq(claims.user_id))
-            .one(&state.db_conn)
-            .await?;
-        if res.is_none() {
-            return Err(ResourceError::SequenceNotExist.into())
-        }
-        let res = entity::sequence::Entity::delete_many()
-            .filter(entity::sequence::Column::Id.eq(payload.seq_id))
-            .exec(&state.db_conn)
-            .await?;
+    pub async fn delete(State(state): State<ServiceState<ResourceService>>, claims: Claims, Json(payload): Json<SeqDeletePayload>) -> Result<impl IntoResponse, GlobalError> {
+        let seq = state.global_state.modules.sequence.service.get_seq(payload.seq_id).await?;
+        if(seq.uid != claims.user_id) {
+            return Err(ResourceError::PermissionDenied.into());
+        }  
+        state.global_state.modules.sequence.service.remove_seq(seq.id).await?;
         
         Ok(())
     }
     
-    pub async fn doc_out(State(state): State<AppState>, claims: Claims, Json(payload): Json<SeqOutPayload>) -> Result<impl IntoResponse, GlobalError> {
+    pub async fn doc_out(State(state): State<ServiceState<ResourceService>>, claims: Claims, Json(payload): Json<SeqOutPayload>) -> Result<impl IntoResponse, GlobalError> {
         // doesn't matter the scopes thisi document is assigned.
         // only author of document is previleged to do this function
         let res = entity::docorg::Entity::find_by_id(payload.doc_id)
             .filter(entity::docorg::Column::DocuserId.eq(claims.user_id))
-            .one(&state.db_conn)
+            .one(&state.global_state.db_conn)
             .await?;
         if res.is_none() {
             return Err(DocumentError::DocumentNotExist.into())
         }
 
-        let res = entity::sequence::Entity::find_by_id(payload.seq_id)
-            .filter(entity::sequence::Column::DocuserId.eq(claims.user_id))
-            .one(&state.db_conn)
-            .await?;
-        if res.is_none() {
-            return Err(ResourceError::SequenceNotExist.into())
-        }
+        let seq = state.global_state.modules.sequence.service.get_seq(payload.seq_id).await?;
+        if(seq.uid != claims.user_id) {
+            return Err(ResourceError::PermissionDenied.into());
+        }  
+        state.global_state.modules.sequence.service.doc_dealloc(seq, payload.doc_id).await?;
         
-        let res = entity::docorg_sequence::Entity::delete_by_id((payload.seq_id, payload.doc_id))
-            .exec(&state.db_conn)
-            .await?;
-
         Ok(())
     }       
-    pub async fn doc_in(State(state): State<AppState>, claims: Claims, Json(payload): Json<SeqInPayload>) -> Result<impl IntoResponse, GlobalError> {
+    pub async fn doc_in(State(state): State<ServiceState<ResourceService>>, claims: Claims, Json(payload): Json<SeqInPayload>) -> Result<impl IntoResponse, GlobalError> {
         let res = entity::docorg::Entity::find_by_id(payload.doc_id)
             .filter(entity::docorg::Column::DocuserId.eq(claims.user_id))
-            .one(&state.db_conn)
+            .one(&state.global_state.db_conn)
             .await?;
         if res.is_none() {
             return Err(DocumentError::DocumentNotExist.into())
         }
 
-        let res = entity::sequence::Entity::find_by_id(payload.seq_id)
-            .filter(entity::sequence::Column::DocuserId.eq(claims.user_id))
-            .one(&state.db_conn)
-            .await?;
-        if res.is_none() {
-            return Err(ResourceError::SequenceNotExist.into())
-        }
+        let seq = state.global_state.modules.sequence.service.get_seq(payload.seq_id).await?;
+        if(seq.uid != claims.user_id) {
+            return Err(ResourceError::PermissionDenied.into());
+        }  
+        state.global_state.modules.sequence.service.doc_alloc(seq, payload.doc_id).await?;
 
-        state.db_conn.clone().transaction::<_, (), GlobalError>(|txn|{
-            Box::pin(async move {
-
-                #[derive(FromQueryResult, Serialize, Debug)]
-                struct Seq {
-                    last_order: i32,
-                };
-                let seq = entity::docorg_sequence::Entity::find()
-                    .filter(entity::docorg_sequence::Column::SequenceId.eq(payload.seq_id))
-                    .select_only()
-                    .column_as(entity::docorg_sequence::Column::Order.max(), "last_order")
-                    .group_by(entity::docorg_sequence::Column::SequenceId)
-                    .into_model::<Seq>()
-                    .one(txn)
-                    .await?;
-
-                if seq.is_none() {
-                    return Err(ResourceError::SequenceNotExist.into());
-                }
-                let seq = seq.unwrap();
-
-                let sequence = entity::docorg_sequence::ActiveModel {
-                    sequence_id: Set(payload.seq_id),
-                    docorg_id: Set(payload.doc_id),
-                    order: Set(seq.last_order+1),
-                };
-                sequence.insert(txn).await?;
-
-                Ok(())
-            })
-        }).await?;
         Ok(())
     }       
-    pub async fn update(State(state): State<AppState>, claims: Claims, Json(mut payload): Json<SeqUpdatePayload>) -> Result<impl IntoResponse, GlobalError> {
+    pub async fn update(State(state): State<ServiceState<ResourceService>>, claims: Claims, Json(mut payload): Json<SeqUpdatePayload>) -> Result<impl IntoResponse, GlobalError> {
         // check user has sequence
         let res = entity::sequence::Entity::find_by_id(payload.seq_id)
             .filter(entity::sequence::Column::DocuserId.eq(claims.user_id))
-            .one(&state.db_conn)
+            .one(&state.global_state.db_conn)
             .await?;
         if res.is_none() {
             return Err(ResourceError::SequenceNotExist.into())
@@ -317,7 +266,7 @@ mod sequence {
         let seq = entity::docorg_sequence::Entity::find()
             .filter(entity::docorg_sequence::Column::SequenceId.eq(payload.seq_id))
             .order_by_asc(entity::docorg_sequence::Column::Order)
-            .all(&state.db_conn)
+            .all(&state.global_state.db_conn)
             .await?;
 
         let mut seq = seq.into_iter().map(|m| m.into_active_model()).collect::<Vec<_>>();
@@ -331,7 +280,7 @@ mod sequence {
 
         }
 
-        state.db_conn.clone().transaction::<_, (), GlobalError>(|txn|{
+        state.global_state.db_conn.clone().transaction::<_, (), GlobalError>(|txn|{
             Box::pin(async move {
                 for am in seq {
                     am.update(txn).await?;
@@ -342,15 +291,49 @@ mod sequence {
 
         Ok(())
     }       
+    pub async fn doc_up(State(state): State<ServiceState<ResourceService>>, claims: Claims, Json(mut payload): Json<SeqUpPayload>) -> Result<impl IntoResponse, GlobalError> {
+        let res = entity::docorg::Entity::find_by_id(payload.doc_id)
+            .filter(entity::docorg::Column::DocuserId.eq(claims.user_id))
+            .one(&state.global_state.db_conn)
+            .await?;
+        if res.is_none() {
+            return Err(DocumentError::DocumentNotExist.into())
+        }
+        let seq = state.global_state.modules.sequence.service.get_seq(payload.seq_id).await?;
+        if(seq.uid != claims.user_id) {
+            return Err(ResourceError::PermissionDenied.into());
+        }  
+
+        state.global_state.modules.sequence.service.doc_ord_up(seq, payload.doc_id).await?;
+
+        Ok(())
     
+    }
+    pub async fn doc_down(State(state): State<ServiceState<ResourceService>>, claims: Claims, Json(mut payload): Json<SeqDownPayload>) -> Result<impl IntoResponse, GlobalError> {
+        let res = entity::docorg::Entity::find_by_id(payload.doc_id)
+            .filter(entity::docorg::Column::DocuserId.eq(claims.user_id))
+            .one(&state.global_state.db_conn)
+            .await?;
+        if res.is_none() {
+            return Err(DocumentError::DocumentNotExist.into())
+        }
+        let seq = state.global_state.modules.sequence.service.get_seq(payload.seq_id).await?;
+        if(seq.uid != claims.user_id) {
+            return Err(ResourceError::PermissionDenied.into());
+        }  
+
+        state.global_state.modules.sequence.service.doc_ord_down(seq, payload.doc_id).await?;
+        Ok(())
+    
+    }
         
 }
-async fn tag(State(state): State<AppState>, claims: Claims, Json(payload): Json<TagPayload>) -> Result<impl IntoResponse, GlobalError> {
+async fn tag(State(state): State<ServiceState<ResourceService>>, claims: Claims, Json(payload): Json<TagPayload>) -> Result<impl IntoResponse, GlobalError> {
     /*
      * need for redis optimization
      */
 
-    redis_does_docuser_have_scope(state.clone(), &payload.scope_ids[..], claims.user_id).await?;
+    redis_does_docuser_have_scope(state.global_state.clone(), &payload.scope_ids[..], claims.user_id).await?;
 
     let mut scope_id_cond = Condition::any();
     for scope_id in payload.scope_ids {
@@ -377,7 +360,7 @@ async fn tag(State(state): State<AppState>, claims: Claims, Json(payload): Json<
         .column_as(entity::docorg_tag::Column::TagId, "tag_id")
         .column_as(entity::tag::Column::Value, "tag_value")
         .into_model::<Docs>()
-        .all(&state.db_conn)
+        .all(&state.global_state.db_conn)
         .await?;
     
     #[derive(Serialize)]
@@ -401,12 +384,12 @@ async fn tag(State(state): State<AppState>, claims: Claims, Json(payload): Json<
     Ok(Json(tag_vec))
 }
 
-async fn list(State(state): State<AppState>, claims: Claims, Json(payload): Json<ListPayload>) -> Result<impl IntoResponse, GlobalError> {
+async fn list(State(state): State<ServiceState<ResourceService>>, claims: Claims, Json(payload): Json<ListPayload>) -> Result<impl IntoResponse, GlobalError> {
     
     /*
      * check user has scope ID
      */
-    redis_does_docuser_have_scope(state.clone(), &payload.scope_ids[..], claims.user_id).await?;
+    redis_does_docuser_have_scope(state.global_state.clone(), &payload.scope_ids[..], claims.user_id).await?;
     
 
     /*
@@ -442,7 +425,7 @@ async fn list(State(state): State<AppState>, claims: Claims, Json(payload): Json
         .order_by_desc(entity::docorg::Column::CreatedAt)
         .order_by_desc(entity::docorg::Column::Id)
         .into_model::<Docs>()
-        .paginate(&state.db_conn, unit_size);
+        .paginate(&state.global_state.db_conn, unit_size);
         // .all(&state.db_conn)
         // .await?;
     let res = res.fetch_page(unit_number).await?; 

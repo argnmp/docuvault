@@ -1,6 +1,6 @@
 use async_trait::async_trait;
 
-use crate::{modules::sequence::domain::{entity::{sequence::Sequence, doc_seq_order::DocSeqOrder}, service::SequenceDomainService}, routes::error::GlobalError};
+use crate::{modules::sequence::domain::{entity::{sequence::{Sequence, SequenceObj}, doc_seq_order::DocSeqOrder}, service::SequenceDomainService}, routes::error::GlobalError};
 
 use super::port::{output::SequenceRepositoryPort, input::SequenceUseCase};
 
@@ -25,8 +25,8 @@ impl SequenceUseCase for SequenceService {
     async fn get_docseqord(&self, seq: Sequence) -> Result<Vec<DocSeqOrder>, GlobalError>{
         Ok(self.sequence_persistent_port.load_docseqord(seq.id).await?)
     }
-    async fn create_seq(&self, seq: Sequence) -> Result<(), GlobalError>{
-        self.sequence_persistent_port.save_seq(seq).await?;
+    async fn create_seq(&self, seq: SequenceObj) -> Result<(), GlobalError>{
+        self.sequence_persistent_port.create_seq(seq).await?;
         Ok(())
     }
     async fn remove_seq(&self, seq_id: i32) -> Result<(), GlobalError>{

@@ -7,13 +7,11 @@ use super::{object::{DocumentStatus, PendingCreatePayload, PendingCreateResponse
 #[derive(Clone, Debug)]
 pub struct DocumentService{
     state: AppState,
-    //pub tag_module: Arc<TagSetModule>,
 }
 impl DocumentService {
     pub fn new(shared_state: AppState) -> Self{
         Self {
             state: shared_state.clone(),
-            //tag_module: Arc::new(TagSetModule::new(shared_state.db_conn)),
         }
     }
     

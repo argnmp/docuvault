@@ -5,6 +5,7 @@ use serde::Serialize;
 
 use crate::{routes::error::GlobalError, entity};
 
+use super::domain::entity::sequence::SequenceObj;
 use super::{application::port::output::SequenceRepositoryPort, domain::entity::{sequence::Sequence, doc_seq_order::DocSeqOrder}, error::SequenceError};
 
 #[derive(Debug)]
@@ -31,7 +32,7 @@ impl SequenceRepositoryPort for SequencePersistentAdapter {
 
         let seq_res = entity::sequence::Entity::find_by_id(seq_id)
             .join_rev(JoinType::LeftJoin, entity::scope_sequence::Relation::Sequence.def())
-            .column_as(entity::scope::Column::Id, "scope_id")
+            .column_as(entity::scope_sequence::Column::ScopeId, "scope_id")
             .into_model::<Wrapper>()
             .all(&self.conn)
             .await?;
@@ -50,6 +51,7 @@ impl SequenceRepositoryPort for SequencePersistentAdapter {
     async fn save_seq(&self, seq: Sequence) -> Result<(), GlobalError>{
         &self.conn.transaction::<_, (), DbErr>(|txn|{
             Box::pin(async move {
+                
                 let sequence = entity::sequence::Entity::find_by_id(seq.id)
                     .one(txn)
                     .await?;
@@ -60,12 +62,6 @@ impl SequenceRepositoryPort for SequencePersistentAdapter {
                         t.update(txn).await?;
                     }, 
                     None => {
-                        let model = entity::sequence::ActiveModel {
-                            title: Set(seq.title),
-                            docuser_id: Set(seq.uid),
-                            ..Default::default()
-                        };
-                        entity::sequence::Entity::insert(model).exec(txn).await?;
                     } 
                 }
                 
@@ -88,6 +84,31 @@ impl SequenceRepositoryPort for SequencePersistentAdapter {
         }).await?;
 
         Ok(())
+    }
+    async fn create_seq(&self, seq: SequenceObj) -> Result<(), GlobalError> {
+        &self.conn.transaction::<_, (), DbErr>(|txn|{
+            Box::pin(async move {
+                let model = entity::sequence::ActiveModel {
+                    title: Set(seq.title),
+                    docuser_id: Set(seq.uid),
+                    ..Default::default()
+                };
+                let res = entity::sequence::Entity::insert(model).exec(txn).await?;
+
+                let records = seq.scope_ids.iter().map(|scope_id|{
+                    entity::scope_sequence::ActiveModel {
+                        sequence_id: Set(res.last_insert_id),
+                        scope_id: Set(*scope_id),
+                    }
+                }).collect::<Vec<_>>();
+
+                entity::scope_sequence::Entity::insert_many(records).exec(txn).await?;
+
+                Ok(())
+            })
+        }).await?;
+        Ok(())
+        
     }
     async fn delete_seq(&self, seq_id: i32) -> Result<(), GlobalError> {
         entity::sequence::Entity::delete_by_id(seq_id)
@@ -117,7 +138,7 @@ impl SequenceRepositoryPort for SequencePersistentAdapter {
         &self.conn.transaction::<_, (), DbErr>(|txn|{
             Box::pin(async move {
                 entity::docorg_sequence::Entity::delete_many()
-                    .filter(entity::scope_sequence::Column::SequenceId.eq(seq_id))
+                    .filter(entity::docorg_sequence::Column::SequenceId.eq(seq_id))
                     .exec(txn)
                     .await?;
 

@@ -11,3 +11,16 @@ impl Sequence {
         }
     }
 }
+
+pub struct SequenceObj {
+    pub uid: i32,
+    pub title: String,
+    pub scope_ids: Vec<i32>,
+}
+impl SequenceObj {
+    pub fn new(uid: i32, title: String, scope_ids: Vec<i32>) -> Self {
+        Self {
+            uid, title, scope_ids
+        }
+    }
+}

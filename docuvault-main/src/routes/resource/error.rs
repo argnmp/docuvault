@@ -7,6 +7,7 @@ pub enum ResourceError {
     UnitSizeZero,
     SequenceNotExist,
     SequenceNotSync,
+    PermissionDenied,
 }
 
 impl IntoResponse for ResourceError {
@@ -15,6 +16,7 @@ impl IntoResponse for ResourceError {
             Self::UnitSizeZero => (StatusCode::BAD_REQUEST, "unit size must not be zero"), 
             Self::SequenceNotExist => (StatusCode::BAD_REQUEST, "specified sequence id does not exist"), 
             Self::SequenceNotSync => (StatusCode::BAD_REQUEST, "update sequence not synchronized"), 
+            Self::PermissionDenied => (StatusCode::BAD_REQUEST, "permission denied"), 
         };
         res.into_response()
     }

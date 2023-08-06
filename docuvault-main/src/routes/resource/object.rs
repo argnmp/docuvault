@@ -103,3 +103,15 @@ pub struct SeqUpdatePayload {
     pub seq_id: i32,
     pub order: Vec<SeqOrder>,
 }
+
+#[derive(Debug, Deserialize)]
+pub struct SeqUpPayload {
+    pub seq_id: i32,
+    pub doc_id: i32,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct SeqDownPayload {
+    pub seq_id: i32,
+    pub doc_id: i32,
+}
