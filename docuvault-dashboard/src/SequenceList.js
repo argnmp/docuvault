@@ -82,6 +82,60 @@ function SequenceList({ setToastOpen }) {
             setToastOpen(true);
         }
     };
+    const handleSequenceUp = async (e, doc_id) => {
+      e.preventDefault();
+      try {
+        let body = {
+          seq_id: Number(seq_id),
+          doc_id: Number(doc_id), 
+        }
+        let res = await axios.post(
+          "http://localhost:8000/resource/sequence/up",
+          body,
+          {
+            headers: {
+              Authorization: `Bearer ${access_token}`,
+            },
+            withCredentials: true,
+          }
+        )
+        dispatch(oppass({ msg: "sequence update success" }));
+        setToastOpen(true);
+        navigate(0);
+      } catch (e) {
+        console.log(e);
+        dispatch(opfail({ msg: e.resource.data }));
+        setToastOpen(true);
+        
+      }
+    }
+    const handleSequenceDown = async (e, doc_id) => {
+      e.preventDefault();
+      try {
+        let body = {
+          seq_id: Number(seq_id),
+          doc_id: Number(doc_id), 
+        }
+        let res = await axios.post(
+          "http://localhost:8000/resource/sequence/down",
+          body,
+          {
+            headers: {
+              Authorization: `Bearer ${access_token}`,
+            },
+            withCredentials: true,
+          }
+        )
+        dispatch(oppass({ msg: "sequence update success" }));
+        setToastOpen(true);
+        navigate(0);
+      } catch (e) {
+        console.log(e);
+        dispatch(opfail({ msg: e.resource.data }));
+        setToastOpen(true);
+        
+      }
+    }
     const tzoffset = new Date().getTimezoneOffset();
     const columns = [
         { field: "id", headerName: "id", width: 20, sortable: false },
@@ -168,7 +222,7 @@ function SequenceList({ setToastOpen }) {
                             variant="outlined"
                             color="success"
                             onClick={(e) => {
-                                let templist = listRef.current.slice();
+                                /* let templist = listRef.current.slice();
                                 let cur_idx = templist.findIndex(
                                     (e) => e.id == params.id
                                 );
@@ -181,7 +235,8 @@ function SequenceList({ setToastOpen }) {
                                 }
                                 listRef.current = templist;
                                 setList(templist);
-                                if (!activated) setActivated(true);
+                                if (!activated) setActivated(true); */
+                                handleSequenceUp(e, params.id)
                             }}
                             size="small"
                         >
@@ -192,7 +247,7 @@ function SequenceList({ setToastOpen }) {
                             variant="outlined"
                             color="success"
                             onClick={(e) => {
-                                let templist = listRef.current.slice();
+                                /* let templist = listRef.current.slice();
                                 let cur_idx = templist.findIndex(
                                     (e) => e.id == params.id
                                 );
@@ -205,7 +260,8 @@ function SequenceList({ setToastOpen }) {
                                 }
                                 listRef.current = templist;
                                 setList(templist);
-                                if (!activated) setActivated(true);
+                                if (!activated) setActivated(true); */
+                                handleSequenceDown(e, params.id)
                             }}
                             size="small"
                         >
