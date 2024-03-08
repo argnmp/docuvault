@@ -1,32 +1,34 @@
-FROM rust:1.67-alpine AS chef
+FROM rust:1.76-alpine AS chef
+RUN set -eux; apk add --no-cache musl-dev;
 RUN apk add --no-cache protoc
 
-WORKDIR /usr/src/docuvault-convert
+RUN cargo install cargo-chef;
+WORKDIR /app
 
-RUN set -eux; \
-    apk add --no-cache musl-dev; \
-    cargo install cargo-chef; \
-    rm -rf $CARGO_HOME/registry
-
-FROM chef as planner
-
-COPY ./docuvault-convert .
-RUN cargo chef prepare --recipe-path recipe.json
+FROM chef AS planner
+COPY ./protos/ ../protos/
+COPY ./docuvault-convert/Cargo.toml .
+COPY ./docuvault-convert/Cargo.lock .
+COPY ./docuvault-convert/src ./src
+COPY ./docuvault-convert/macros ./macros
+COPY ./docuvault-convert/build.rs .
+RUN cargo chef prepare  --recipe-path recipe.json
 
 FROM chef AS builder
+COPY --from=planner /app/recipe.json recipe.json
 
-COPY --from=planner /usr/src/docuvault-convert/recipe.json .
+COPY ./docuvault-convert/macros ./macros
 RUN cargo chef cook --release --recipe-path recipe.json
-
 COPY ./protos/ ../protos/
-COPY ./docuvault-convert .
+COPY ./docuvault-convert/Cargo.toml .
+COPY ./docuvault-convert/Cargo.lock .
+COPY ./docuvault-convert/src ./src
+COPY ./docuvault-convert/macros ./macros
+COPY ./docuvault-convert/build.rs .
 RUN cargo build --release
 
 FROM alpine:latest
+RUN apk add --no-cache pandoc
+COPY --from=builder /app/target/release/docuvault-convert /app/docuvault-convert
+CMD ["./app/docuvault-convert"]
 
-WORKDIR /usr/local/bin
-
-COPY ./docuvault-convert/.env /usr/local/bin
-COPY --from=builder /usr/src/docuvault-convert/target/release/docuvault-convert .
-
-CMD ["./docuvault-convert"]

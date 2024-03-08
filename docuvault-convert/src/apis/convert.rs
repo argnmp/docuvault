@@ -93,12 +93,11 @@ impl Convert for ConvertService {
                                             convertres.data = Set(Some(res.object_id));
                                             convertres.status = Set(1);
                                             convertres.update(&db_conn).await.unwrap();
-
                                         },
                                         Err(e) => {
                                             dbg!(e);
                                             convertres.status = Set(2);
-                                            convertres.insert(&db_conn).await.unwrap();
+                                            convertres.update(&db_conn).await.unwrap();
                                         }
                                     }
 
@@ -106,7 +105,7 @@ impl Convert for ConvertService {
                                 Err(e) => {
                                     dbg!(e);
                                     convertres.status = Set(2);
-                                    convertres.insert(&db_conn).await.unwrap();
+                                    convertres.update(&db_conn).await.unwrap();
                                 }
                             }
 
@@ -115,14 +114,14 @@ impl Convert for ConvertService {
                         Err(e) => {
                             dbg!(e);
                             convertres.status = Set(2);
-                            convertres.insert(&db_conn).await.unwrap();
+                            convertres.update(&db_conn).await.unwrap();
                         }
                     }
                 }
                 Err(e) => {
                     dbg!(e);
                     convertres.status = Set(2);
-                    convertres.insert(&db_conn).await.unwrap();
+                    convertres.update(&db_conn).await.unwrap();
                 }
 
             }

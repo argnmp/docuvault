@@ -1,32 +1,33 @@
-FROM rust:1.67-alpine AS chef
+FROM rust:1.76-alpine AS chef
+RUN set -eux; apk add --no-cache musl-dev;
 RUN apk add --no-cache protoc
 
-WORKDIR /usr/src/docuvault-file
+RUN cargo install cargo-chef;
+WORKDIR /app
 
-RUN set -eux; \
-    apk add --no-cache musl-dev; \
-    cargo install cargo-chef; \
-    rm -rf $CARGO_HOME/registry
-
-FROM chef as planner
-
-COPY ./docuvault-file .
-RUN cargo chef prepare --recipe-path recipe.json
+FROM chef AS planner
+COPY ./protos/ ../protos/
+COPY ./docuvault-file/Cargo.toml .
+COPY ./docuvault-file/Cargo.lock .
+COPY ./docuvault-file/src ./src
+COPY ./docuvault-file/macros ./macros
+COPY ./docuvault-file/build.rs .
+RUN cargo chef prepare  --recipe-path recipe.json
 
 FROM chef AS builder
+COPY --from=planner /app/recipe.json recipe.json
 
-COPY --from=planner /usr/src/docuvault-file/recipe.json .
+COPY ./docuvault-file/macros ./macros
 RUN cargo chef cook --release --recipe-path recipe.json
-
 COPY ./protos/ ../protos/
-COPY ./docuvault-file .
+COPY ./docuvault-file/Cargo.toml .
+COPY ./docuvault-file/Cargo.lock .
+COPY ./docuvault-file/src ./src
+COPY ./docuvault-file/macros ./macros
+COPY ./docuvault-file/build.rs .
 RUN cargo build --release
 
 FROM alpine:latest
+COPY --from=builder /app/target/release/docuvault-file /app/docuvault-file
+CMD ["./app/docuvault-file"]
 
-WORKDIR /usr/local/bin
-
-COPY ./docuvault-file/.env /usr/local/bin
-COPY --from=builder /usr/src/docuvault-file/target/release/docuvault-file .
-
-CMD ["./docuvault-file"]

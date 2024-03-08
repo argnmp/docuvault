@@ -1,32 +1,33 @@
-FROM rust:1.67-alpine AS chef
+FROM rust:1.76-alpine AS chef
+RUN set -eux; apk add --no-cache musl-dev;
 RUN apk add --no-cache protoc
 
-WORKDIR /usr/src/file-reverse-proxy
+RUN cargo install cargo-chef;
+WORKDIR /app
 
-RUN set -eux; \
-    apk add --no-cache musl-dev; \
-    cargo install cargo-chef; \
-    rm -rf $CARGO_HOME/registry
-
-FROM chef as planner
-
-COPY ./file-reverse-proxy .
-RUN cargo chef prepare --recipe-path recipe.json
+FROM chef AS planner
+COPY ./protos/ ../protos/
+COPY ./file-reverse-proxy/Cargo.toml .
+COPY ./file-reverse-proxy/Cargo.lock .
+COPY ./file-reverse-proxy/src ./src
+COPY ./file-reverse-proxy/macros ./macros
+COPY ./file-reverse-proxy/build.rs .
+RUN cargo chef prepare  --recipe-path recipe.json
 
 FROM chef AS builder
+COPY --from=planner /app/recipe.json recipe.json
 
-COPY --from=planner /usr/src/file-reverse-proxy/recipe.json .
+COPY ./file-reverse-proxy/macros ./macros
 RUN cargo chef cook --release --recipe-path recipe.json
-
 COPY ./protos/ ../protos/
-COPY ./file-reverse-proxy .
+COPY ./file-reverse-proxy/Cargo.toml .
+COPY ./file-reverse-proxy/Cargo.lock .
+COPY ./file-reverse-proxy/src ./src
+COPY ./file-reverse-proxy/macros ./macros
+COPY ./file-reverse-proxy/build.rs .
 RUN cargo build --release
 
 FROM alpine:latest
+COPY --from=builder /app/target/release/file-reverse-proxy /app/file-reverse-proxy
+CMD ["./app/file-reverse-proxy"]
 
-WORKDIR /usr/local/bin
-
-COPY ./file-reverse-proxy/.env /usr/local/bin
-COPY --from=builder /usr/src/file-reverse-proxy/target/release/file-reverse-proxy .
-
-CMD ["./file-reverse-proxy"]
