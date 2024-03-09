@@ -4,7 +4,7 @@ use async_trait::async_trait;
 use bb8::Pool;
 use bb8_redis::RedisConnectionManager;
 use redis::AsyncCommands;
-use sea_orm::DatabaseConnection;
+use sea_orm::{DatabaseConnection, DatabaseTransaction};
 use sea_orm::{entity::*, query::*, FromQueryResult};
 use crate::entity;
 use crate::routes::error::GlobalError;
@@ -25,7 +25,7 @@ impl TagSetPersistentAdapter {
 #[async_trait()]
 impl TagSetRepositoryPort for TagSetPersistentAdapter {
 
-    async fn load(&self) -> Result<TagSet, GlobalError> {
+    async fn load(&self, txn: &DatabaseTransaction) -> Result<TagSet, GlobalError> {
         let tags = entity::tag::Entity::find()
             .order_by_asc(entity::tag::Column::Value)
             .all(&self.conn)
@@ -33,8 +33,8 @@ impl TagSetRepositoryPort for TagSetPersistentAdapter {
         let tag_set = tags.into_iter().map(|tag| Tag::new(tag.value)).collect::<BTreeSet<Tag>>();
         Ok(TagSet::new(tag_set)) 
     }
-    async fn save(&self, tag_set: &TagSet) -> Result<(), GlobalError> {
-        let old_tags = self.load().await?;
+    async fn save(&self, txn: &DatabaseTransaction, tag_set: &TagSet) -> Result<(), GlobalError> {
+        let old_tags = self.load(txn).await?;
         let new_tags = tag_set.tags.iter().filter(|tag| !old_tags.tags.contains(tag)).map(|tag| tag).collect::<Vec<&Tag>>();
         let records = new_tags.iter().map(|tag| entity::tag::ActiveModel{
             value: Set(tag.value.clone()),
@@ -58,14 +58,14 @@ impl TagSetMemoryAdapter {
 
 #[async_trait()]
 impl TagSetRepositoryPort for TagSetMemoryAdapter {
-    async fn load(&self) -> Result<TagSet, GlobalError> {
+    async fn load(&self, txn: &DatabaseTransaction) -> Result<TagSet, GlobalError> {
         let mut con = self.conn.get().await?;
         let tags: std::collections::BTreeSet<String> = con.zrange("tags", 0, -1).await?;
         let tags: BTreeSet<Tag> = tags.into_iter().map(|tag| Tag::new(tag)).collect();
         Ok(TagSet::new(tags))
     }
-    async fn save(&self, tag_set: &TagSet) -> Result<(), GlobalError> {
-        let old_tags = self.load().await?;
+    async fn save(&self, txn: &DatabaseTransaction, tag_set: &TagSet) -> Result<(), GlobalError> {
+        let old_tags = self.load(txn).await?;
         let new_tags = tag_set.tags.iter().filter(|tag| !old_tags.tags.contains(tag)).map(|tag| (0, tag.value.to_string())).collect::<Vec<(i32, String)>>();
         let mut con = self.conn.get().await?;
         con.zadd_multiple("tag", &new_tags[..]).await?;

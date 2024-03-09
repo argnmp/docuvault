@@ -4,7 +4,7 @@ use super::entity::doc_seq_order::DocSeqOrder;
 
 pub struct SequenceDomainService {}
 impl SequenceDomainService {
-    pub fn up(doc_id: i32, mut docs: Vec<DocSeqOrder>) -> Result<Vec<DocSeqOrder>, ()> {
+    pub fn down(doc_id: i32, mut docs: Vec<DocSeqOrder>) -> Result<Vec<DocSeqOrder>, ()> {
         docs.sort_by_key(|doc| doc.order);
         if let Some(doc) = docs.last() {
             if(doc_id == doc.doc_id) {
@@ -35,7 +35,7 @@ impl SequenceDomainService {
             }
         }
     }
-    pub fn down(doc_id: i32, mut docs: Vec<DocSeqOrder>) -> Result<Vec<DocSeqOrder>, ()> {
+    pub fn up(doc_id: i32, mut docs: Vec<DocSeqOrder>) -> Result<Vec<DocSeqOrder>, ()> {
         docs.sort_by_key(|doc| doc.order);
         if let Some(doc) = docs.get(0) {
             if(doc_id == doc.doc_id) {

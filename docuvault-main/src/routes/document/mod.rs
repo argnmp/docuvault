@@ -150,14 +150,14 @@ async fn create(State(state): State<ServiceState<DocumentService>>, claims: Clai
              */
 
             if payload.tags.len()>0 {
-                let tags: TagSet = state.global_state.modules.tag.service.get().await?;
+                let tags: TagSet = state.global_state.modules.tag.service.get(txn).await?;
                 let document_tags = payload.tags.into_iter().map(|tag|tag.trim().to_lowercase().to_string()).collect::<std::collections::BTreeSet<_>>();
 
                 let new_tags = document_tags.iter().filter(|tag| !tags.tags.contains(&Tag::new(tag.to_string()))).map(|tag| (0, tag.clone())).collect::<Vec<_>>();
 
 
                 for (_, tag) in &new_tags {
-                    state.global_state.modules.tag.service.add(tag.clone()).await?;
+                    state.global_state.modules.tag.service.add(txn, tag.clone()).await?;
                 }
 
                 let mut cond = Condition::any();
@@ -383,14 +383,14 @@ async fn update(State(state): State<ServiceState<DocumentService>>, claims: Clai
              */
 
             if payload.tags.len()>0 {
-                let tags = state.global_state.modules.tag.service.get().await?;
+                let tags = state.global_state.modules.tag.service.get(txn).await?;
                 
                 let document_tags = payload.tags.into_iter().map(|tag|tag.trim().to_lowercase().to_string()).collect::<std::collections::BTreeSet<_>>();
 
                 let new_tags = document_tags.iter().filter(|tag| !tags.tags.contains(&Tag::new(tag.to_string()))).map(|tag| (0, tag.clone())).collect::<Vec<_>>();
 
                 for (_, tag) in &new_tags {
-                    state.global_state.modules.tag.service.add(tag.clone()).await?;
+                    state.global_state.modules.tag.service.add(txn, tag.clone()).await?;
                 }
 
                 let mut cond = Condition::any();

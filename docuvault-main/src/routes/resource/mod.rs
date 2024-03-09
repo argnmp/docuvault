@@ -429,7 +429,6 @@ async fn list(State(state): State<ServiceState<ResourceService>>, claims: Claims
         // .all(&state.db_conn)
         // .await?;
     let res = res.fetch_page(unit_number).await?; 
-    dbg!(&res);
     
     let mut list: Vec<CompDocs> = Vec::new();
     for docs in res {
